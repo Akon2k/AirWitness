@@ -17,6 +17,10 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Sentinel.Dashboard.Services;
 
+/// <summary>
+/// El "Núcleo Nuclear" de AirWitness. Procesa el audio en tiempo real usando SoundFingerprinting.
+/// Reemplaza la necesidad de scripts externos (como monitor.py) ejecutando todo el proceso en la memoria de la JVM/.NET.
+/// </summary>
 public class NativeAudioMonitor
 {
     private readonly FFmpegAudioService _audioSvc;
@@ -24,20 +28,29 @@ public class NativeAudioMonitor
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ConcurrentDictionary<string, TrackData> _registeredMasters = new();
 
-    // Evento para emitir telemetría al UI
+    /// <summary>
+    /// Evento disparado para telemetría visual en el Dashboard (logs de consola).
+    /// </summary>
     public event Action<string, string> OnTelemetry;
+    
+    /// <summary>
+    /// Evento disparado cuando se confirma un 'Hit' acústico positivo.
+    /// </summary>
     public event Action<TelemetryPayload> OnMatchFound;
 
     public NativeAudioMonitor(FFmpegAudioService audioSvc, IServiceScopeFactory scopeFactory)
     {
         _audioSvc = audioSvc;
         _scopeFactory = scopeFactory;
-        _modelService = new InMemoryModelService();
+        _modelService = new InMemoryModelService(); // Base de datos acústica volátil de alto rendimiento
     }
 
     /// <summary>
-    /// Calcula e inserta un MP3 maestro a la base de datos acústica en memoria.
+    /// Registra una pista maestra (comercial) en el motor de búsqueda acústica.
+    /// Genera los 'sub-fingerprints' necesarios para la comparación en tiempo real.
     /// </summary>
+    /// <param name="radioUrl">ID vinculante de la radio.</param>
+    /// <param name="mp3Path">Ruta física del archivo comercial.</param>
     public async Task RegisterMasterTrackAsync(string radioUrl, string mp3Path)
     {
         if (string.IsNullOrEmpty(mp3Path) || !File.Exists(mp3Path)) return;
@@ -56,16 +69,16 @@ public class NativeAudioMonitor
             _modelService.Insert(trackInfo, hash);
             _registeredMasters[radioUrl] = new TrackData { Track = trackInfo, Duration = (float)samples.Length / 5512f };
             
-            OnTelemetry?.Invoke(radioUrl, $"[C# CORE] Matriz Maestra encriptada. {hash.Count} firmas acústicas.");
+            OnTelemetry?.Invoke(radioUrl, $"[KERNEL] Matriz Maestra registrada: {hash.Count} firmas digitales.");
         }
         catch (Exception ex)
         {
-            OnTelemetry?.Invoke(radioUrl, $"[C# FATAL] Error al generar huella maestra: {ex.Message}");
+            OnTelemetry?.Invoke(radioUrl, $"[ERROR KERNEL] Fallo al generar huella: {ex.Message}");
         }
     }
 
     /// <summary>
-    /// Remueve la huella maestra si se detiene la vinculación
+    /// Remueve la huella maestra de la memoria RAM cuando se detiene el monitoreo.
     /// </summary>
     public void UnregisterMaster(string radioUrl)
     {
@@ -76,16 +89,20 @@ public class NativeAudioMonitor
     }
 
     /// <summary>
-    /// Loop infinito de monitorización (reemplaza al monitor.py y fpcalc.exe)
+    /// Bucle principal de monitoreo en tiempo real.
+    /// Captura audio del stream, lo procesa en un búfer circular y busca coincidencias cada 10 segundos.
     /// </summary>
+    /// <param name="streamUrl">URL origen del audio.</param>
+    /// <param name="evidenceDir">Carpeta de destino para grabaciones de evidencia.</param>
+    /// <param name="ct">Token para detener el proceso limpiamente.</param>
     public async Task MonitorStreamAsync(string streamUrl, string evidenceDir, CancellationToken ct)
     {
-        string safeUrl = streamUrl.Replace("\"", "").Trim(); // Permite espacios en rutas locales
+        string safeUrl = streamUrl.Replace("\"", "").Trim();
         
-        OnTelemetry?.Invoke(streamUrl, $"[C# CORE] Enganchando tuner FFMPEG: {safeUrl}");
+        OnTelemetry?.Invoke(streamUrl, $"[KERNEL] Iniciando tuner digital: {safeUrl}");
 
         int bytesPerRead = 5512 * 4 * 2; // ~2 segundos de Float32 a 5512Hz
-        int bufferSeconds = 45;
+        int bufferSeconds = 45; // Guardamos los últimos 45 segundos en RAM para contexto
         int maxBufferBytes = 5512 * 4 * bufferSeconds;
         
         using var process = _audioSvc.GetStreamProcess(safeUrl, 5512);
@@ -93,16 +110,16 @@ public class NativeAudioMonitor
         byte[] buffer = new byte[maxBufferBytes];
         int currentBytes = 0;
         
-        // Post-match logic
-        bool capturingPostMatch = false;
-        long postMatchBytesRemaining = 0;
-        MemoryStream evidenceBuffer = new MemoryStream();
-        
         long totalSamplesProcessed = 0;
         double lastMatchStreamElapsed = 0;
         double lastMatchOffset = 0;
         double lastMatchConfidence = 0;
         DateTime lastAnalysisTime = DateTime.MinValue;
+
+        // Estado para grabación de evidencia post-detección
+        bool capturingPostMatch = false;
+        long postMatchBytesRemaining = 0;
+        using MemoryStream evidenceBuffer = new MemoryStream();
 
         try
         {
@@ -110,19 +127,11 @@ public class NativeAudioMonitor
             while (!ct.IsCancellationRequested && !process.HasExited)
             {
                 int read = await baseStream.ReadAsync(readChunk, 0, bytesPerRead, ct);
-                if (read == 0) 
-                {
-                    if (process.HasExited && process.ExitCode != 0)
-                    {
-                        var errStr = await process.StandardError.ReadToEndAsync();
-                        OnTelemetry?.Invoke(streamUrl, $"[C# FFMPEG FATAL] {errStr}");
-                    }
-                    break;
-                }
+                if (read == 0) break;
                 
                 totalSamplesProcessed += read / 4;
 
-                // Rotar Búfer circular si se llena o añadir normal
+                // Implementación de Búfer Circular en RAM
                 if (currentBytes + read > maxBufferBytes)
                 {
                     int overflow = (currentBytes + read) - maxBufferBytes;
@@ -133,6 +142,7 @@ public class NativeAudioMonitor
                 Buffer.BlockCopy(readChunk, 0, buffer, currentBytes, read);
                 currentBytes += read;
 
+                // Grabación de Evidencia (Post-Match)
                 if (capturingPostMatch)
                 {
                     await evidenceBuffer.WriteAsync(readChunk, 0, read);
@@ -140,7 +150,6 @@ public class NativeAudioMonitor
 
                     if (postMatchBytesRemaining <= 0)
                     {
-                        // Finalizar y Guardar la evidencia con los márgenes perfectos
                         capturingPostMatch = false;
                         byte[] finalEvidenceBytes = evidenceBuffer.ToArray();
                         int validBytesCount = (finalEvidenceBytes.Length / 4) * 4;
@@ -151,9 +160,9 @@ public class NativeAudioMonitor
                         string outPath = Path.Combine(evidenceDir, $"match_csharp_{dateStr}.mp3");
                         await _audioSvc.SaveEvidenceAsync(evSamples, 5512, outPath);
 
-                        OnTelemetry?.Invoke(streamUrl, $"[EVIDENCIA C#] Post-roll grabado ({evSamples.Length / 5512f:F1}s). Archivo: {Path.GetFileName(outPath)}");
+                        OnTelemetry?.Invoke(streamUrl, $"[EVIDENCIA] Grabación finalizada: {Path.GetFileName(outPath)}");
                         
-                        // Notificar el Match completo subiendo Telemetría
+                        // Orquestación de Persistencia y Notificación
                         var trackD = _registeredMasters.GetValueOrDefault(streamUrl);
                         if (trackD != null)
                         {
@@ -171,61 +180,45 @@ public class NativeAudioMonitor
 
                             OnMatchFound?.Invoke(payload);
 
-                            // --- PERSISTENCIA POSTGRESQL (ENTERPRISE) ---
+                            // Registro asíncrono en PostgreSQL (Enterprise Layer)
                             _ = Task.Run(async () => {
                                 try {
                                     using var scope = _scopeFactory.CreateScope();
                                     var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
-                                    // Asegurar que la Radio existe
                                     var radio = await db.RadioStations.FirstOrDefaultAsync(r => r.StreamUrl == streamUrl);
                                     if (radio == null) {
-                                        radio = new RadioStation { 
-                                            Name = $"Radio {Path.GetFileNameWithoutExtension(streamUrl)}", 
-                                            StreamUrl = streamUrl 
-                                        };
+                                        radio = new RadioStation { Name = "Radio Auto-Detect", StreamUrl = streamUrl };
                                         db.RadioStations.Add(radio);
                                         await db.SaveChangesAsync();
                                     }
 
-                                    // Asegurar que el Master existe (usamos el Title como referencia única por ahora)
                                     var master = await db.MasterAudios.FirstOrDefaultAsync(m => m.Title == trackD.Track.Title);
                                     if (master == null) {
-                                        master = new MasterAudio { 
-                                            Title = trackD.Track.Title, 
-                                            Duration = trackD.Duration,
-                                            LocalPath = trackD.Track.Id // Guardamos el ID de SF como path de referencia
-                                        };
+                                        master = new MasterAudio { Title = trackD.Track.Title, Duration = trackD.Duration };
                                         db.MasterAudios.Add(master);
                                         await db.SaveChangesAsync();
                                     }
 
-                                    // Guardar el Registro de Auditoría
-                                    var record = new MatchRecord {
+                                    db.MatchRecords.Add(new MatchRecord {
                                         DetectionTime = DateTime.UtcNow,
                                         RadioStationId = radio.Id,
                                         MasterAudioId = master.Id,
                                         Confidence = lastMatchConfidence,
                                         MatchOffsetSeconds = lastMatchOffset,
-                                        StreamElapsedSeconds = lastMatchStreamElapsed,
                                         EvidenceFileName = Path.GetFileName(outPath)
-                                    };
-                                    db.MatchRecords.Add(record);
+                                    });
                                     await db.SaveChangesAsync();
                                 } catch (Exception ex) {
-                                    // Logueamos pero NO lanzamos el error para no matar el Thread Pool ni al padre
-                                    Console.WriteLine($"[DB ERROR CRÍTICO] Fallo en persistencia: {ex.Message}");
-                                    OnTelemetry?.Invoke(streamUrl, $"[DB ERROR] No se pudo persistir match: {ex.Message}");
+                                    Console.WriteLine($"[DB FAIL] {ex.Message}");
                                 }
                             });
                         }
-                        
                         evidenceBuffer.SetLength(0);
-                        continue;
                     }
                 }
 
-                // Analizar cada ~10 segundos si tenemos el búfer lleno y no estamos capturando el post-match
+                // Ciclo de Análisis Acústico (cada 10 segundos)
                 var timeSinceLastAnalysis = (DateTime.Now - lastAnalysisTime).TotalSeconds;
                 if (currentBytes >= maxBufferBytes && !capturingPostMatch && timeSinceLastAnalysis >= 10)
                 {
@@ -242,53 +235,39 @@ public class NativeAudioMonitor
                     if (queryResult.BestMatch != null)
                     {
                         var match = queryResult.BestMatch;
-                        
                         lastMatchConfidence = match.Audio.Confidence;
                         lastMatchOffset = match.Audio.TrackMatchStartsAt;
                         double bufferStartTime = (totalSamplesProcessed - (currentBytes / 4)) / 5512.0;
                         lastMatchStreamElapsed = bufferStartTime + match.Audio.QueryMatchStartsAt;
 
                         var trackD = _registeredMasters.GetValueOrDefault(streamUrl);
-                        double masterDuration = trackD != null ? trackD.Duration : 30.0;
+                        double masterDuration = trackD?.Duration ?? 30.0;
                         
-                        // Queremos guardar 5 segundos de pre-roll exactos
+                        // Configuración de ventana de grabación (Pre-roll de 5s + duración + 5s post)
                         double preRollSeconds = 5.0;
                         double startPointInCurrentBuffer = match.Audio.QueryMatchStartsAt - preRollSeconds;
-                        if (startPointInCurrentBuffer < 0) startPointInCurrentBuffer = 0; // Si la radio empezó hace menos de 5 seg
-                        int startSamplesOffset = (int)(startPointInCurrentBuffer * 5512);
-                        int startBytesOffset = startSamplesOffset * 4;
-                        if (startBytesOffset > currentBytes) startBytesOffset = currentBytes;
+                        if (startPointInCurrentBuffer < 0) startPointInCurrentBuffer = 0;
+                        int startBytesOffset = (int)(startPointInCurrentBuffer * 5512) * 4;
                         int bytesToCopy = currentBytes - startBytesOffset;
-                        if (bytesToCopy < 0) bytesToCopy = 0;
                         
-                        // ¿Cuánto tiempo extra falta escuchar para grabar el final del comercial + 5 segundos post?
-                        double audioAlreadyInCopiedBufferSeconds = bytesToCopy / (5512.0 * 4);
-                        double targetTotalSecondsToCapture = preRollSeconds + masterDuration + 5.0;
-                        double remainingSecondsToCapture = targetTotalSecondsToCapture - audioAlreadyInCopiedBufferSeconds;
-                        if (remainingSecondsToCapture < 0) remainingSecondsToCapture = 0;
-                        
-                        postMatchBytesRemaining = (long)(remainingSecondsToCapture * 5512 * 4);
-                        if (postMatchBytesRemaining < 1) postMatchBytesRemaining = 1; // Mínimo un byte para entrar al loop
+                        double alreadyCaptured = bytesToCopy / (5512.0 * 4);
+                        double totalTarget = preRollSeconds + masterDuration + 5.0;
+                        postMatchBytesRemaining = (long)((totalTarget - alreadyCaptured) * 5512 * 4);
 
-                        // El motor C# lo detectó estelarmente.
-                        OnTelemetry?.Invoke(streamUrl, $"[C# KERNEL] Comercial Hit! Recortando 5s de pre-roll. Gravando {remainingSecondsToCapture:F1}s adicionales...");
+                        OnTelemetry?.Invoke(streamUrl, $"[IDENTIFICADO] Coincidencia encontrada ({lastMatchConfidence:P0}). Iniciando captura de evidencia.");
                         capturingPostMatch = true;
                         
-                        // Recortamos la ventana precisa y la pasamos al grabador final
                         byte[] winCopy = new byte[bytesToCopy];
                         Buffer.BlockCopy(buffer, startBytesOffset, winCopy, 0, bytesToCopy);
                         evidenceBuffer.SetLength(0);
                         await evidenceBuffer.WriteAsync(winCopy, 0, bytesToCopy);
-                        
-                        // Limpiar búfer
                         currentBytes = 0;
                     }
                     else
                     {
                         var score = queryResult.ResultEntries.FirstOrDefault()?.Audio?.Confidence ?? 0.0;
-                        OnTelemetry?.Invoke(streamUrl, $"Silencio o no-match. Confidence Actual = {score:P2}");
+                        OnTelemetry?.Invoke(streamUrl, $"[ESCANEO] Sin hallazgos. Confianza: {score:P2}");
                     }
-                    // Pequeña pausa para no enloquecer si caemos en el segundo 10 muchas veces
                     await Task.Delay(1000, ct); 
                 }
             }
@@ -296,7 +275,7 @@ public class NativeAudioMonitor
         catch (OperationCanceledException) { }
         catch (Exception ex)
         {
-            OnTelemetry?.Invoke(streamUrl, $"[FATAL] Conexión abortada en Core C#: {ex.Message}");
+            OnTelemetry?.Invoke(streamUrl, $"[ERROR CRÍTICO] {ex.Message}");
         }
         finally
         {
@@ -311,6 +290,9 @@ public class NativeAudioMonitor
     }
 }
 
+/// <summary>
+/// Modelo de datos para el transporte de resultados de detección en tiempo real.
+/// </summary>
 public class TelemetryPayload
 {
     public string Timestamp { get; set; }
