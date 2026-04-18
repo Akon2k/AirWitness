@@ -1,0 +1,39 @@
+# .NET
+[Bb]in/
+[Oo]bj/
+[Oo]ut/
+*.user
+*.userosscache
+*.sln.docstates
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+
+# Visual Studio / VS Code
+.vs/
+.vscode/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Proyecto AirWitness (Persistencia Local)
+evidencia_compartida/
+assets_compartidos/
+postgres_data/
+src/Sentinel.Dashboard/wwwroot/uploads/**
+!src/Sentinel.Dashboard/wwwroot/uploads/.gitkeep
+
+# Docker
+.dockerignore
+
+# OS
+.DS_Store
+Thumbs.db

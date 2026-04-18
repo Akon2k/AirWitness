@@ -1,0 +1,26 @@
+@inherits LayoutComponentBase
+
+<div class="page-with-sidebar">
+    <NavMenu />
+
+    <div class="main-wrapper-sentinel">
+        <header class="top-bar-sentinel">
+            <div class="top-bar-left">
+                <!-- Espacio para migas de pan o buscador futuro -->
+            </div>
+            <div class="top-bar-right">
+                <WeatherNeonWidget />
+            </div>
+        </header>
+
+        <main class="main-content-sentinel">
+            @Body
+        </main>
+    </div>
+</div>
+
+<div id="blazor-error-ui" data-nosnippet>
+    An unhandled error has occurred.
+    <a href="." class="reload">Reload</a>
+    <span class="dismiss">🗙</span>
+</div>

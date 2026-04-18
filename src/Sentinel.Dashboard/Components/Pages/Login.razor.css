@@ -1,0 +1,247 @@
+.selector-container {
+    height: 100vh;
+    width: 100%;
+    background: radial-gradient(circle at center, #060b16 0%, #05080f 100%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    overflow: hidden;
+    color: #e2e8f0;
+    font-family: 'Outfit', sans-serif;
+}
+
+/* Fondo decorativo con cuadrícula técnica */
+.selector-container::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image: 
+        linear-gradient(rgba(0, 242, 255, 0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0, 242, 255, 0.03) 1px, transparent 1px);
+    background-size: 50px 50px;
+    mask-image: radial-gradient(circle at center, black 0%, transparent 80%);
+    pointer-events: none;
+}
+
+.vignette {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(circle at center, transparent 0%, rgba(0,0,0,0.7) 100%);
+    pointer-events: none;
+}
+
+/* Línea de escaneo láser sutil */
+.selector-container::after {
+    content: "";
+    position: absolute;
+    top: -100%;
+    left: 0;
+    width: 100%;
+    height: 50%;
+    background: linear-gradient(to bottom, transparent, rgba(0, 242, 255, 0.05), transparent);
+    animation: scan 8s linear infinite;
+    pointer-events: none;
+}
+
+@keyframes scan {
+    0% { top: -100%; }
+    100% { top: 100%; }
+}
+
+.header-section {
+    text-align: center;
+    margin-bottom: 50px;
+    z-index: 10;
+    animation: fadeInDown 1s ease-out;
+}
+
+.main-title {
+    font-size: 5rem;
+    font-weight: 900;
+    letter-spacing: 20px;
+    margin-bottom: 10px;
+    background: linear-gradient(to right, #fff, #00f2ff, #05ffa1);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    filter: drop-shadow(0 0 15px rgba(0, 242, 255, 0.4));
+    margin-right: -20px; /* Compensa el letter-spacing del final */
+}
+
+.tagline {
+    font-size: 0.75rem;
+    letter-spacing: 8px;
+    color: #64748b;
+    text-transform: uppercase;
+    font-weight: 400;
+}
+
+.auth-form-card {
+    background: rgba(15, 23, 42, 0.4);
+    border: 1px solid rgba(0, 242, 255, 0.2);
+    border-radius: 32px;
+    padding: 70px 50px;
+    position: relative;
+    overflow: hidden;
+    backdrop-filter: blur(30px) saturate(150%);
+    z-index: 10;
+    width: 100%;
+    max-width: 500px;
+    box-shadow: 
+        0 25px 50px -12px rgba(0, 0, 0, 0.8),
+        0 0 30px rgba(0, 242, 255, 0.1);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    animation: fadeInUp 1s ease-out 0.2s both;
+}
+
+/* Efecto de borde brillante dinámico */
+.auth-form-card::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, #00f2ff, transparent);
+    animation: borderMove 4s linear infinite;
+}
+
+@keyframes borderMove {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+}
+
+.icon-box {
+    width: 60px;
+    height: 60px;
+    margin-bottom: 40px;
+    color: #00f2ff;
+    filter: drop-shadow(0 0 10px rgba(0, 242, 255, 0.5));
+}
+
+.login-input-group {
+    width: 100%;
+    max-width: 340px;
+    position: relative;
+    margin-bottom: 30px;
+}
+
+.login-input {
+    width: 100%;
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 16px;
+    padding: 20px 24px;
+    color: #fff;
+    font-size: 1.1rem;
+    font-family: 'Outfit', sans-serif;
+    outline: none;
+    text-align: center;
+    letter-spacing: 6px;
+    font-weight: 700;
+    transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.login-input:focus {
+    border-color: #00f2ff;
+    box-shadow: 0 0 30px rgba(0, 242, 255, 0.2), inset 0 0 10px rgba(0, 242, 255, 0.1);
+    transform: scale(1.02);
+}
+
+.btn-indicator {
+    width: 100%;
+    max-width: 340px;
+    padding: 18px;
+    border-radius: 16px;
+    background: linear-gradient(135deg, #00f2ff, #05ffa1);
+    border: none;
+    font-size: 0.9rem;
+    font-weight: 800;
+    letter-spacing: 3px;
+    color: #05080f;
+    cursor: pointer;
+    transition: all 0.3s;
+    text-transform: uppercase;
+    box-shadow: 0 0 20px rgba(0, 242, 255, 0.3);
+}
+
+.btn-indicator:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 15px 30px rgba(0, 242, 255, 0.5);
+    filter: brightness(1.1);
+}
+
+.btn-indicator:active {
+    transform: translateY(-2px);
+}
+
+.error-text {
+    color: #ff2d55;
+    font-size: 0.8rem;
+    margin-top: -15px;
+    margin-bottom: 25px;
+    letter-spacing: 2px;
+    font-weight: 700;
+    text-shadow: 0 0 10px rgba(255, 45, 85, 0.3);
+}
+
+.footer-info {
+    position: absolute;
+    bottom: 40px;
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    padding: 0 80px;
+    color: #475569;
+    font-size: 0.65rem;
+    letter-spacing: 3px;
+    font-weight: 700;
+}
+
+.status-marker {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.pulse-dot {
+    width: 8px;
+    height: 8px;
+    background: #ff2d55;
+    border-radius: 50%;
+    box-shadow: 0 0 15px #ff2d55;
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0% { transform: scale(1); opacity: 1; box-shadow: 0 0 10px #ff2d55; }
+    50% { transform: scale(1.5); opacity: 0.5; box-shadow: 0 0 25px #ff2d55; }
+    100% { transform: scale(1); opacity: 1; box-shadow: 0 0 10px #ff2d55; }
+}
+
+@keyframes fadeInDown {
+    from { opacity: 0; transform: translateY(-30px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(30px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    20% { transform: translateX(-10px); }
+    40% { transform: translateX(10px); }
+    60% { transform: translateX(-10px); }
+    80% { transform: translateX(10px); }
+}
+
+.login-input.error {
+    border-color: #ff2d55;
+    animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both;
+}

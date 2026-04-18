@@ -1,0 +1,372 @@
+@page "/single"
+@using System.IO
+@using Microsoft.AspNetCore.Authorization
+@using Sentinel.Dashboard.Services
+@using Sentinel.Dashboard.Components.Layout
+@attribute [Authorize]
+@inject WorkerOrchestrator Orchestrator
+@layout EmptyLayout
+@rendermode InteractiveServer
+@implements IDisposable
+
+<PageTitle>AirWitness Dashboard</PageTitle>
+
+<div class="dashboard-container">
+    <div class="sidebar frosted-glass">
+        <h1 class="brand-title">AirWitness</h1>
+        <p class="subtitle">Auditoría Criptográfica de Streaming</p>
+
+        <nav class="sidebar-nav" style="margin-bottom: 30px; display: flex; flex-direction: column; gap: 10px;">
+            <a href="/" class="btn-side-nav" style="text-decoration: none;">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 8px; vertical-align: middle;">
+                    <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+                    <polyline points="9 22 9 12 15 12 15 22"></polyline>
+                </svg>
+                MENÚ PRINCIPAL
+            </a>
+            <a href="/multi" class="btn-side-nav purple" style="text-decoration: none;">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 8px; vertical-align: middle;">
+                    <rect x="3" y="3" width="7" height="7"></rect>
+                    <rect x="14" y="3" width="7" height="7"></rect>
+                    <rect x="14" y="14" width="7" height="7"></rect>
+                    <rect x="3" y="14" width="7" height="7"></rect>
+                </svg>
+                PANEL MULTI-RADIO
+            </a>
+        </nav>
+
+        <div style="margin: 15px 0 25px 0;">
+            <WeatherNeonWidget />
+        </div>
+
+        <div class="control-group">
+            <label>Publicidad</label>
+            <div class="file-upload-wrapper">
+                <input type="text" @bind="masterPath" placeholder="..\assets\comercial.mp3" class="neon-input" style="flex: 1;" />
+                <label class="btn-neon btn-upload" for="master-upload">EXAMINAR</label>
+                <InputFile id="master-upload" OnChange="HandleMasterUpload" hidden accept=".mp3,.wav,.ogg" />
+            </div>
+            @if(isUploadingMaster)
+            {
+                <small class="neon-text-blue" style="margin-top: 5px;">Subiendo archivo...</small>
+            }
+        </div>
+
+        <div class="control-group">
+            <label>Stream URL</label>
+            <div class="file-upload-wrapper">
+                <input type="text" @bind="streamUrl" placeholder="http://tu-radio.fm:8000/stream" class="neon-input" style="flex: 1;" />
+                <label class="btn-neon btn-upload" for="stream-upload">EXAMINAR</label>
+                <InputFile id="stream-upload" OnChange="HandleStreamUpload" hidden accept=".mp3,.wav,.ogg,.m3u" />
+            </div>
+            @if(isUploadingStream)
+            {
+                <small class="neon-text-blue" style="margin-top: 5px;">Subiendo archivo...</small>
+            }
+            @if(!string.IsNullOrWhiteSpace(streamUrl))
+            {
+               <div style="margin-top: 10px;">
+                    <audio @key="@("streamAudioPlayer")" controls src="@GetPlayableStreamUrl()" style="width: 100%; height: 40px; border-radius: 8px; opacity: 0.8; transition: opacity 0.3s;" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.8"></audio>
+               </div>
+            }
+        </div>
+
+        <button class="btn-neon @(Orchestrator.IsRunning(streamUrl) ? "btn-danger" : "btn-success")" @onclick="ToggleMonitor">
+            @if(Orchestrator.IsRunning(streamUrl))
+            {
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 8px; vertical-align: middle;">
+                    <rect x="6" y="6" width="12" height="12"></rect>
+                </svg>
+                <span>DETENER MONITOREO</span>
+            }
+            else
+            {
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 8px; vertical-align: middle;">
+                    <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                </svg>
+                <span>INICIAR ESCANEO RADIAL</span>
+            }
+        </button>
+
+        <div class="status-indicator @(Orchestrator.IsRunning(streamUrl) ? "status-active" : "status-idle")">
+            <span class="dot"></span>
+            @(Orchestrator.IsRunning(streamUrl) ? "ESCANEANDO STREAM EN VIVO..." : "ESPERANDO INSTRUCCIONES")
+        </div>
+
+        @if (Orchestrator.IsRunning(streamUrl))
+        {
+            <div style="margin-top: 1rem; padding: 1rem 1.25rem; background: rgba(0,0,0,0.25); border-radius: 16px; border: 1px solid rgba(158, 206, 106, 0.2);">
+                <div style="font-size: 0.65rem; color: #9499b0; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 0.5rem; font-family: 'Outfit', sans-serif; font-weight: 700;">Mejor Coincidencia (Sesión)</div>
+                <div style="font-family: 'Outfit', sans-serif; font-size: 2rem; color: #9ece6a; font-weight: 800; line-height: 1; text-shadow: 0 0 20px rgba(158, 206, 106, 0.4);">
+                    @bestConfidence.ToString("P1")
+                </div>
+                <div style="width: 100%; height: 5px; background: rgba(255,255,255,0.06); border-radius: 3px; margin-top: 0.75rem; overflow: hidden;">
+                    <div style="height: 100%; width: @(bestConfidence * 100)%; background: linear-gradient(90deg, #1e8c6e, #9ece6a); border-radius: 3px; transition: width 0.6s ease;"></div>
+                </div>
+            </div>
+        }
+    </div>
+
+    <div class="main-content">
+        <div class="radar-view @(Orchestrator.IsRunning(streamUrl) ? "scanning" : "")">
+            <div class="radar-sweep"></div>
+            <div class="radar-center"></div>
+            <!-- Anillos decorativos extra -->
+            <div style="position:absolute;width:80px;height:80px;border:1px solid rgba(122,162,247,0.2);border-radius:50%;"></div>
+            @if(isMatchActive)
+            {
+                <div class="match-pulse">🔔 MATCH DETECTADO</div>
+            }
+        </div>
+
+        <div class="console frosted-glass">
+            <div class="console-header">TELEMETRÍA EN TIEMPO REAL</div>
+            <div class="telemetry-split">
+                <div class="matches-table-container">
+                    <table class="neon-table">
+                        <thead>
+                            <tr>
+                                <th>HORA DETECCIÓN</th>
+                                <th>INICIO (STREAM)</th>
+                                <th>FIN (STREAM)</th>
+                                <th>CONFIANZA</th>
+                                <th>AUDIO</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @if (!matchHistory.Any())
+                            {
+                                <tr>
+                                    <td colspan="5" style="text-align: center; color: #565f89; padding: 20px;">
+                                        ESPERANDO DETECCIONES EN TIEMPO REAL...
+                                    </td>
+                                </tr>
+                            }
+                            else
+                            {
+                                @foreach (var m in matchHistory)
+                                {
+                                    var startTS = TimeSpan.FromSeconds((double)m.Result.StreamElapsedSeconds);
+                                    var endTS = TimeSpan.FromSeconds((double)(m.Result.StreamElapsedSeconds + m.Result.MasterDuration));
+                                    
+                                    var startTime = string.Format("{0:D2}:{1:D2}:{2:D2}", startTS.Hours, startTS.Minutes, startTS.Seconds);
+                                    var endTime = string.Format("{0:D2}:{1:D2}:{2:D2}", endTS.Hours, endTS.Minutes, endTS.Seconds);
+                                    <tr>
+                                        <td>@m.FoundAt.ToString("HH:mm:ss")</td>
+                                        <td class="neon-text-blue">@startTime</td>
+                                        <td class="neon-text-red">@endTime</td>
+                                        <td class="neon-text-green">@m.Result.Confidence.ToString("P1")</td>
+                                        <td>
+                                            @if (!string.IsNullOrEmpty(m.Result.EvidenceFile))
+                                            {
+                                                <a href="/evidencia/@m.Result.EvidenceFile" target="_blank" class="btn-download-mini" title="Descargar Evidencia" download>
+                                                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                                                </a>
+                                            }
+                                            else
+                                            {
+                                                <span style="opacity: 0.3;">
+                                                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                                                </span>
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+                            }
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="console-body" id="logBody">
+                    @foreach(var item in logs)
+                    {
+                        var isMatchLog = item.Contains("\"match\": true");
+                        <div class="log-entry @(isMatchLog ? "log-match" : (item.StartsWith("{") ? "log-scan" : "log-sys"))">
+                            <span class="log-time">[@DateTime.Now.ToString("HH:mm:ss")]</span> @item
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private string masterPath = @"C:\Proyectos Antigravity\AirWitness\assets\comercial_lider.mp3";
+    private string streamUrl = @"C:\Proyectos Antigravity\AirWitness\assets\grabacion_radio.mp3";
+    private List<string> logs = new();
+    private List<MatchRecord> matchHistory = new();
+    private bool isMatchActive = false;
+    private bool isUploadingMaster = false;
+    private bool isUploadingStream = false;
+    private decimal bestConfidence = 0;
+
+    private async Task HandleMasterUpload(InputFileChangeEventArgs e)
+    {
+        isUploadingMaster = true;
+        StateHasChanged();
+        try
+        {
+            var folder = Path.Combine(Environment.CurrentDirectory, "wwwroot", "uploads");
+            if (!Directory.Exists(folder)) Directory.CreateDirectory(folder);
+            
+            var path = Path.Combine(folder, e.File.Name);
+            using var fileStream = new FileStream(path, FileMode.Create);
+            await e.File.OpenReadStream(100 * 1024 * 1024).CopyToAsync(fileStream); // Max 100MB
+            masterPath = path;
+        }
+        catch(Exception ex)
+        {
+            logs.Insert(0, $"[Error] Error subiendo Master: {ex.Message}");
+        }
+        finally
+        {
+            isUploadingMaster = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task HandleStreamUpload(InputFileChangeEventArgs e)
+    {
+        isUploadingStream = true;
+        StateHasChanged();
+        try
+        {
+            var folder = Path.Combine(Environment.CurrentDirectory, "wwwroot", "uploads");
+            if (!Directory.Exists(folder)) Directory.CreateDirectory(folder);
+            
+            var path = Path.Combine(folder, e.File.Name);
+            using var fileStream = new FileStream(path, FileMode.Create);
+            await e.File.OpenReadStream(500 * 1024 * 1024).CopyToAsync(fileStream); // Max 500MB
+            streamUrl = path;
+        }
+        catch(Exception ex)
+        {
+            logs.Insert(0, $"[Error] Error subiendo Stream: {ex.Message}");
+        }
+        finally
+        {
+            isUploadingStream = false;
+            StateHasChanged();
+        }
+    }
+
+    public class MatchRecord
+    {
+        public DateTime FoundAt { get; set; }
+        public MatchResult Result { get; set; } = new();
+    }
+
+    private string GetPlayableStreamUrl()
+    {
+        if (string.IsNullOrWhiteSpace(streamUrl)) return "";
+        if (streamUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase)) return streamUrl;
+        
+        if (streamUrl.Contains("wwwroot"))
+        {
+            var parts = streamUrl.Split(new[] { "wwwroot" }, StringSplitOptions.None);
+            if (parts.Length > 1)
+            {
+                return parts[parts.Length - 1].Replace("\\", "/");
+            }
+        }
+        return "";
+    }
+
+    protected override void OnInitialized()
+    {
+        Orchestrator.OnLog += HandleLog;
+        Orchestrator.OnNewResult += HandleResult;
+        Orchestrator.OnStatusChanged += HandleStatusChanged;
+    }
+
+    private void HandleStatusChanged()
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void ToggleMonitor()
+    {
+        if (Orchestrator.IsRunning(streamUrl))
+        {
+            Orchestrator.StopMonitor(streamUrl);
+            isMatchActive = false;
+        }
+        else
+        {
+            logs.Clear();
+            matchHistory.Clear();
+            bestConfidence = 0;
+            isMatchActive = false;
+            Orchestrator.StartMonitor(masterPath, streamUrl);
+        }
+    }
+
+    private void HandleLog(string message, string sourceUrl)
+    {
+        if (sourceUrl != streamUrl) return; 
+
+        InvokeAsync(() => {
+            logs.Insert(0, message);
+            if (logs.Count > 100) logs.RemoveAt(logs.Count - 1);
+            StateHasChanged();
+        });
+    }
+
+    private void HandleResult(MatchResult result)
+    {
+        if (result.Source != streamUrl) return;
+
+        if (result.Confidence > bestConfidence)
+        {
+            bestConfidence = result.Confidence;
+        }
+
+        InvokeAsync(async () => {
+            string msg;
+            if (result.Match)
+            {
+                // Bloquear registros duplicados del mismo comercial (60 segundos de cooldown)
+                bool isSpam = matchHistory.Any(m => (DateTime.Now - m.FoundAt).TotalSeconds < 60);
+                if (isSpam) 
+                {
+                    // Lo ignoramos por completo en la tabla y en el log para no saturar
+                    return;
+                }
+
+                var startTS = TimeSpan.FromSeconds((double)result.StreamElapsedSeconds);
+                var endTS = TimeSpan.FromSeconds((double)(result.StreamElapsedSeconds + result.MasterDuration));
+                
+                var startTimeStr = string.Format("{0:D2}:{1:D2}:{2:D2}", startTS.Hours, startTS.Minutes, startTS.Seconds);
+                var endTimeStr = string.Format("{0:D2}:{1:D2}:{2:D2}", endTS.Hours, endTS.Minutes, endTS.Seconds);
+                
+                msg = $"[MATCH ENCONTRADO] El comercial inició en {startTimeStr} y terminó en {endTimeStr} (Precisión: {result.Confidence:P1})";
+
+                matchHistory.Insert(0, new MatchRecord { FoundAt = DateTime.Now, Result = result });
+            }
+            else
+            {
+                msg = System.Text.Json.JsonSerializer.Serialize(result);
+            }
+            
+            logs.Insert(0, msg);
+            if (logs.Count > 100) logs.RemoveAt(logs.Count - 1);
+            
+            if(result.Match)
+            {
+                isMatchActive = true;
+                StateHasChanged();
+                await Task.Delay(3000); // mostrar alerta por 3 segundos
+                isMatchActive = false;
+            }
+            StateHasChanged();
+        });
+    }
+
+    public void Dispose()
+    {
+        Orchestrator.OnLog -= HandleLog;
+        Orchestrator.OnNewResult -= HandleResult;
+        Orchestrator.OnStatusChanged -= HandleStatusChanged;
+    }
+}

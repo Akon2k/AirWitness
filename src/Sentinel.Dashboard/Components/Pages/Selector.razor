@@ -1,0 +1,246 @@
+@page "/"
+@using Sentinel.Dashboard.Models.Data
+@using Sentinel.Dashboard.Data
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
+@inject ApplicationDbContext Db
+
+<PageTitle>Command Center - AirWitness</PageTitle>
+
+<div class="command-center">
+    <div class="welcome-header">
+        <h1>Centro de Mando <span>AirWitness</span></h1>
+        <p>Visión predictiva y auditoría de medios en tiempo real.</p>
+    </div>
+
+    <!-- KPI COMMAND STRIP -->
+    <div class="kpi-strip">
+        <div class="kpi-card glass">
+            <div class="kpi-icon total">
+                <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+            </div>
+            <div class="kpi-info">
+                <span class="kpi-value">@totalAuditCount</span>
+                <span class="kpi-label">AUDITORÍAS TOTALES</span>
+            </div>
+        </div>
+        <div class="kpi-card glass">
+            <div class="kpi-icon radio">
+                <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line></svg>
+            </div>
+            <div class="kpi-info">
+                <span class="kpi-value">@stationCount</span>
+                <span class="kpi-label">RADIOS CONFIGURADAS</span>
+            </div>
+        </div>
+        <div class="kpi-card glass">
+            <div class="kpi-icon alert">
+                <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+            </div>
+            <div class="kpi-info">
+                <span class="kpi-value">@lastDetectionTime</span>
+                <span class="kpi-label">ÚLTIMA DETECCIÓN</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="hub-grid">
+        <NavLink href="multi" class="hub-card purple">
+            <div class="hub-glow"></div>
+            <div class="hub-icon">
+                <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+            </div>
+            <div class="hub-content">
+                <h2>MATRIZ DE VIGILANCIA</h2>
+                <p>Monitoreo masivo de hasta 10 señales con inteligencia artificial en tiempo real.</p>
+                <div class="hub-btn">INICIAR OPERACIONES</div>
+            </div>
+        </NavLink>
+
+        <NavLink href="maintenance/stations" class="hub-card blue">
+            <div class="hub-glow"></div>
+            <div class="hub-icon">
+                <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+            </div>
+            <div class="hub-content">
+                <h2>BÓVEDA DE DATOS</h2>
+                <p>Configuración de medios, importación de fuentes y gestión de persistencia SQL.</p>
+                <div class="hub-btn">GESTIONAR RED</div>
+            </div>
+        </NavLink>
+        
+        <NavLink href="single" class="hub-card cyan">
+            <div class="hub-glow"></div>
+            <div class="hub-icon">
+                <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+            </div>
+            <div class="hub-content">
+                <h2>RADAR INDIVIDUAL</h2>
+                <p>Análisis exhaustivo de una señal única con grabación forense de evidencia.</p>
+                <div class="hub-btn">ABRIR TERMINAL</div>
+            </div>
+        </NavLink>
+    </div>
+</div>
+
+<style>
+    .command-center {
+        max-width: 1200px;
+        margin: 0 auto;
+        animation: fadeIn 0.8s ease-out;
+    }
+
+    @@keyframes fadeIn {
+        from { opacity: 0; transform: translateY(20px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    .welcome-header {
+        margin-bottom: 3.5rem;
+    }
+
+    .welcome-header h1 {
+        font-family: 'Outfit', sans-serif;
+        font-size: 3rem;
+        font-weight: 800;
+        margin-bottom: 0.5rem;
+        letter-spacing: -1px;
+    }
+
+    .welcome-header h1 span {
+        color: var(--text-accent);
+        background: linear-gradient(to right, var(--text-accent), #a78bfa);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+    }
+
+    .welcome-header p {
+        color: var(--text-dim);
+        font-size: 1.1rem;
+        font-weight: 500;
+    }
+
+    /* KPI STRIP */
+    .kpi-strip {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 1.5rem;
+        margin-bottom: 3.5rem;
+    }
+
+    .kpi-card {
+        padding: 1.75rem;
+        display: flex;
+        align-items: center;
+        gap: 1.5rem;
+        border-radius: 20px;
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        transition: transform 0.3s ease;
+    }
+
+    .kpi-card:hover {
+        transform: translateY(-5px);
+        border-color: rgba(122, 162, 247, 0.4);
+    }
+
+    .kpi-icon {
+        width: 54px;
+        height: 54px;
+        border-radius: 14px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .kpi-icon.total { background: rgba(122, 162, 247, 0.15); color: #7aa2f7; }
+    .kpi-icon.radio { background: rgba(158, 206, 106, 0.15); color: #9ece6a; }
+    .kpi-icon.alert { background: rgba(187, 154, 247, 0.15); color: #bb9af7; }
+
+    .kpi-info { display: flex; flex-direction: column; }
+    .kpi-value { font-size: 1.75rem; font-weight: 800; line-height: 1; font-family: 'Outfit', sans-serif; color: #fff; }
+    .kpi-label { font-size: 0.65rem; font-weight: 700; color: var(--text-dim); letter-spacing: 1px; margin-top: 4px; }
+
+    /* HUB GRID */
+    .hub-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+        gap: 2rem;
+    }
+
+    .hub-card {
+        position: relative;
+        padding: 3rem 2.5rem;
+        border-radius: 28px;
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        text-decoration: none;
+        overflow: hidden;
+        transition: all 0.4s cubic-bezier(0.165, 0.84, 0.44, 1);
+        display: flex;
+        flex-direction: column;
+        gap: 1.5rem;
+    }
+
+    .hub-card h2 { color: #fff; font-family: 'Outfit', sans-serif; font-weight: 800; font-size: 1.5rem; margin: 0; }
+    .hub-card p { color: var(--text-dim); font-size: 1rem; line-height: 1.6; margin: 0; }
+
+    .hub-icon { color: var(--text-accent); transition: transform 0.4s ease; }
+    .hub-card:hover .hub-icon { transform: scale(1.1) rotate(-5deg); color: #fff; }
+
+    .hub-btn {
+        margin-top: auto;
+        font-size: 0.75rem;
+        font-weight: 800;
+        letter-spacing: 1.5px;
+        color: var(--text-accent);
+        text-transform: uppercase;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .hub-card:hover {
+        background: rgba(122, 162, 247, 0.05);
+        border-color: var(--text-accent);
+        box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+    }
+
+    .hub-card.purple:hover { border-color: #bb9af7; }
+    .hub-card.blue:hover { border-color: #3b82f6; }
+    .hub-card.cyan:hover { border-color: #2dd4bf; }
+
+    .hub-glow {
+        position: absolute;
+        top: 0; right: 0;
+        width: 150px; height: 150px;
+        background: radial-gradient(circle, rgba(122, 162, 247, 0.1) 0%, transparent 70%);
+        pointer-events: none;
+    }
+</style>
+
+@code {
+    private int totalAuditCount = 0;
+    private int stationCount = 0;
+    private string lastDetectionTime = "N/A";
+
+    protected override async Task OnInitializedAsync()
+    {
+        try 
+        {
+            totalAuditCount = await Db.MatchRecords.CountAsync();
+            stationCount = await Db.RadioStations.CountAsync();
+            
+            var last = await Db.MatchRecords.OrderByDescending(m => m.DetectionTime).FirstOrDefaultAsync();
+            if (last != null)
+            {
+                var diff = DateTime.UtcNow - last.DetectionTime;
+                if (diff.TotalMinutes < 1) lastDetectionTime = "HACE INSTANTES";
+                else if (diff.TotalHours < 1) lastDetectionTime = $"HACE {Math.Floor(diff.TotalMinutes)} MIN";
+                else lastDetectionTime = last.DetectionTime.ToLocalTime().ToString("HH:mm");
+            }
+        }
+        catch { }
+    }
+}

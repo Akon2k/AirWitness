@@ -1,0 +1,617 @@
+@page "/maintenance/stations"
+@using Sentinel.Dashboard.Services
+@using Sentinel.Dashboard.Models.Data
+@using Microsoft.AspNetCore.Authorization
+@* @attribute [Authorize] *@
+@inject RadioConfigService ConfigService
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+@rendermode InteractiveServer
+
+<div class="maintenance-container @(isLightMode ? "light-mode" : "")">
+    <div class="glass-sidebar">
+        <div class="sidebar-header">
+            <div class="brand">AIRWITNESS <span class="badge-pro">PRO</span></div>
+        </div>
+        
+        <nav class="side-nav">
+            <button class="nav-item" @onclick='() => Nav.NavigateTo("/multi")'>
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+                MULTI-MONITOR
+            </button>
+            <button class="nav-item active">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path></svg>
+                GESTIÓN DB
+            </button>
+        </nav>
+
+        <div class="sidebar-footer">
+            <div class="db-status online">
+                <span class="dot"></span> POSTGRESQL LINKED
+            </div>
+        </div>
+    </div>
+
+    <main class="main-content">
+        <header class="content-header">
+            <div class="header-info">
+                <h1 class="gradient-text">Gestión de Medios</h1>
+                <p>Configuración persistente de la red de monitoreo.</p>
+            </div>
+            <div class="header-actions">
+                <button class="btn-neon generic" @onclick="ExportJson">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                    RESPALDO JSON
+                </button>
+                <button class="btn-neon" @onclick="() => isAddModalOpen = true">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                    NUEVO MEDIO
+                </button>
+            </div>
+        </header>
+
+        @if (isLoading)
+        {
+            <div class="loader-overlay">
+                <div class="spinner"></div>
+                <span>Sincronizando con PostgreSQL...</span>
+            </div>
+        }
+        else
+        {
+            <div class="table-card frosted-glass">
+                <table class="premium-table">
+                    <thead>
+                        <tr>
+                            <th>NOMBRE DEL MEDIO</th>
+                            <th>UBICACIÓN</th>
+                            <th>FRECUENCIA</th>
+                            <th>URL STREAMING</th>
+                            <th>ESTADO</th>
+                            <th style="text-align: right;">ACCIONES</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var station in stations)
+                        {
+                            <tr>
+                                <td>
+                                    <div class="station-cell">
+                                        <div class="avatar">@(!string.IsNullOrEmpty(station.Name) ? station.Name[0].ToString().ToUpper() : "R")</div>
+                                        <div class="info">
+                                            <span class="name">@station.Name</span>
+                                            <span class="type">@station.Category</span>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td>@station.City, @station.Region</td>
+                                <td><span class="freq-badge">@station.Frequency</span></td>
+                                <td><code class="url-code">@station.StreamUrl</code></td>
+                                <td>
+                                    <span class="status-pill active">ACTIVO</span>
+                                </td>
+                                <td style="text-align: right;">
+                                    <div class="btn-group">
+                                        <button class="btn-icon" @onclick="() => EditStation(station)" title="Editar">
+                                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                                        </button>
+                                        <button class="btn-icon cyan" @onclick="() => OpenScheduleModal(station)" title="Programación">
+                                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                                        </button>
+                                        <button class="btn-icon danger" @onclick="() => DeleteStation(station)" title="Eliminar">
+                                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </main>
+</div>
+
+@if (isAddModalOpen || editingStation != null)
+{
+    <div class="modal-overlay">
+        <div class="modal-card frosted-glass animate-in">
+            <div class="modal-header">
+                <h2>@(editingStation != null ? "Editar Estación" : "Nueva Estación de Radio")</h2>
+                <button class="btn-close" @onclick="CloseModal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Nombre del Medio</label>
+                        <input type="text" @bind="model.Name" class="neon-input" placeholder="Ej: Radio Infinita" />
+                    </div>
+                    <div class="form-group">
+                        <label>URL de Streaming</label>
+                        <input type="text" @bind="model.StreamUrl" class="neon-input" placeholder="http://..." />
+                    </div>
+                    <div class="form-group">
+                        <label>Ciudad</label>
+                        <input type="text" @bind="model.City" class="neon-input" placeholder="Santiago" />
+                    </div>
+                    <div class="form-group">
+                        <label>Frecuencia / Dial</label>
+                        <input type="text" @bind="model.Frequency" class="neon-input" placeholder="100.1 FM" />
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-neon gray" @onclick="CloseModal">CANCELAR</button>
+                <button class="btn-neon" @onclick="SaveStation">@(editingStation != null ? "ACTUALIZAR" : "GUARDAR EN DB")</button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (isScheduleModalOpen && selectedStationForSchedule != null)
+{
+    <div class="modal-overlay">
+        <div class="modal-card frosted-glass animate-in" style="max-width: 700px;">
+            <div class="modal-header">
+                <div>
+                    <h2>Programación: @selectedStationForSchedule.Name</h2>
+                    <p style="font-size: 0.75rem; color: var(--text-dim); margin: 0;">El motor iniciará 5 min antes de cada bloque.</p>
+                </div>
+                <button class="btn-close" @onclick="() => isScheduleModalOpen = false">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="schedule-list" style="margin-bottom: 2rem;">
+                    @if (stationSchedules.Count == 0)
+                    {
+                        <div style="text-align: center; padding: 2rem; border: 1px dashed rgba(255,255,255,0.1); border-radius: 12px; color: var(--text-dim);">
+                            No hay horarios programados. La radio solo encenderá manualmente.
+                        </div>
+                    }
+                    else
+                    {
+                        @foreach (var sch in stationSchedules)
+                        {
+                            <div class="schedule-row" style="display: flex; align-items: center; justify-content: space-between; background: rgba(0,0,0,0.2); padding: 1rem; border-radius: 12px; margin-bottom: 0.5rem; border: 1px solid rgba(255,255,255,0.05);">
+                                <div style="display: flex; align-items: center; gap: 1rem;">
+                                    <div style="background: var(--btn-bg); padding: 6px 12px; border-radius: 8px; font-weight: 700; color: var(--text-accent);">
+                                        @sch.StartTime.ToString("HH:mm") - @sch.EndTime.ToString("HH:mm")
+                                    </div>
+                                    <span style="font-size: 0.8rem; color: var(--text-dim);">Diario</span>
+                                </div>
+                                <button class="btn-icon danger" @onclick="() => RemoveSchedule(sch.Id)">
+                                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                                </button>
+                            </div>
+                        }
+                    }
+                </div>
+
+                <div class="add-schedule-form" style="background: rgba(0, 242, 255, 0.05); padding: 1.5rem; border-radius: 16px; border: 1px solid rgba(0, 242, 255, 0.2);">
+                    <h3 style="font-size: 0.9rem; font-weight: 700; margin-bottom: 1rem; color: var(--neon-cyan);">AÑADIR NUEVO BLOQUE</h3>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; align-items: flex-end;">
+                        <div class="form-group">
+                            <label>Inicio</label>
+                            <input type="time" @bind="newScheduleStart" class="neon-input" />
+                        </div>
+                        <div class="form-group">
+                            <label>Fin</label>
+                            <input type="time" @bind="newScheduleEnd" class="neon-input" />
+                        </div>
+                        <button class="btn-neon" @onclick="AddSchedule" style="height: 42px;">AÑADIR</button>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-neon gray" @onclick="() => isScheduleModalOpen = false">CERRAR</button>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    :root {
+        --sidebar-bg: rgba(6, 11, 22, 0.98);
+        --main-bg: #05080f;
+        --accent-neon: var(--neon-cyan);
+        --text-dim: #94a3b8;
+    }
+
+    .maintenance-container {
+        display: flex;
+        min-height: 100vh;
+        background: var(--main-bg);
+        color: white;
+        font-family: 'Outfit', sans-serif;
+    }
+
+    /* SIDEBAR */
+    .glass-sidebar {
+        width: 260px;
+        background: var(--sidebar-bg);
+        border-right: 1px solid rgba(255,255,255,0.05);
+        display: flex;
+        flex-direction: column;
+        padding: 2rem 1rem;
+    }
+
+    .sidebar-header .brand {
+        font-size: 1.25rem;
+        font-weight: 800;
+        letter-spacing: 2px;
+        color: #fff;
+        margin-bottom: 3rem;
+        padding-left: 1rem;
+    }
+    .sidebar-header .brand .badge-pro { 
+        font-size: 0.6rem;
+        padding: 2px 6px;
+        background: linear-gradient(135deg, var(--neon-cyan), var(--neon-emerald));
+        border-radius: 4px;
+        vertical-align: middle;
+        margin-left: 5px;
+    }
+
+    .side-nav {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        flex: 1;
+    }
+
+    .nav-item {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 0.85rem 1rem;
+        border-radius: 12px;
+        background: transparent;
+        border: none;
+        color: var(--text-dim);
+        font-weight: 600;
+        transition: all 0.3s;
+        text-align: left;
+    }
+
+    .nav-item:hover {
+        background: rgba(255,255,255,0.03);
+        color: #fff;
+    }
+
+    .nav-item.active {
+        background: rgba(0, 242, 255, 0.1);
+        color: var(--neon-cyan);
+        box-shadow: inset 0 0 0 1px rgba(0, 242, 255, 0.2);
+    }
+
+    /* MAIN CONTENT */
+    .main-content {
+        flex: 1;
+        padding: 2.5rem 3rem;
+        overflow-y: auto;
+    }
+
+    .content-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-end;
+        margin-bottom: 3rem;
+    }
+
+    .header-info h1 {
+        font-size: 2.8rem;
+        font-weight: 800;
+        margin-bottom: 0.5rem;
+        font-family: 'Outfit', sans-serif;
+    }
+
+    .header-info h1.gradient-text {
+        background: linear-gradient(to right, #fff, var(--neon-cyan), var(--neon-emerald));
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+    }
+
+    .header-actions {
+        display: flex;
+        gap: 1rem;
+    }
+
+    /* TABLE */
+    .table-card {
+        background: rgba(30, 41, 59, 0.4);
+        border-radius: 24px;
+        border: 1px solid rgba(255,255,255,0.05);
+        overflow: hidden;
+        backdrop-filter: blur(20px);
+    }
+
+    .premium-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+    .premium-table th {
+        background: rgba(255,255,255,0.02);
+        padding: 1.25rem 1.5rem;
+        font-size: 0.75rem;
+        font-weight: 700;
+        color: var(--text-dim);
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        text-align: left;
+    }
+
+    .premium-table td {
+        padding: 1.25rem 1.5rem;
+        border-top: 1px solid rgba(255,255,255,0.05);
+        font-size: 0.9rem;
+    }
+
+    .station-cell {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+    }
+
+    .station-cell .avatar {
+        width: 40px;
+        height: 40px;
+        background: linear-gradient(135deg, var(--neon-cyan), var(--neon-emerald));
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 800;
+        font-size: 1.1rem;
+        color: #05080f; /* High contrast dark font on neon avatar */
+        box-shadow: 0 0 15px rgba(0, 242, 255, 0.3);
+    }
+
+    .station-cell .info {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .station-cell .name { font-weight: 700; font-size: 1rem; }
+    .station-cell .type { color: var(--text-dim); font-size: 0.75rem; }
+
+    .freq-badge {
+        background: rgba(0, 242, 255, 0.1);
+        color: var(--neon-cyan);
+        padding: 4px 10px;
+        border-radius: 6px;
+        font-weight: 700;
+        font-size: 0.8rem;
+        border: 1px solid rgba(0, 242, 255, 0.2);
+    }
+
+    .url-code {
+        color: #7dd3fc;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 0.75rem;
+        background: rgba(0,0,0,0.2);
+        padding: 4px 8px;
+        border-radius: 4px;
+    }
+
+    .status-pill {
+        font-size: 0.65rem;
+        font-weight: 800;
+        padding: 4px 8px;
+        border-radius: 5px;
+    }
+    .status-pill.active { background: rgba(34, 197, 94, 0.15); color: #4ade80; }
+
+    .btn-icon {
+        background: rgba(255,255,255,0.05);
+        border: 1px solid rgba(255,255,255,0.1);
+        color: var(--text-dim);
+        width: 36px;
+        height: 36px;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: all 0.2s;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .btn-icon:hover { background: rgba(255,255,255,0.1); color: #fff; box-shadow: 0 0 15px rgba(255,255,255,0.1); }
+    .btn-icon.cyan:hover { background: rgba(0, 242, 255, 0.1); color: var(--neon-cyan); border-color: rgba(0, 242, 255, 0.3); box-shadow: 0 0 15px rgba(0, 242, 255, 0.2); }
+    .btn-icon.danger:hover { background: rgba(255, 45, 85, 0.1); color: #ff2d55; border-color: rgba(255, 45, 85, 0.3); box-shadow: 0 0 15px rgba(255, 45, 85, 0.2); }
+
+    /* MODALS */
+    .modal-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.8);
+        backdrop-filter: blur(10px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+        padding: 20px;
+    }
+
+    .modal-card {
+        width: 100%;
+        max-width: 600px;
+        background: #1e293b;
+        border: 1px solid rgba(255,255,255,0.1);
+        border-radius: 28px;
+        overflow: hidden;
+    }
+
+    .modal-header {
+        padding: 1.5rem 2rem;
+        border-bottom: 1px solid rgba(255,255,255,0.05);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .modal-header h2 { font-size: 1.25rem; font-weight: 700; }
+    .btn-close { background: none; border: none; font-size: 1.5rem; color: var(--text-dim); cursor: pointer; }
+
+    .modal-body { padding: 2rem; }
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+    .form-group { display: flex; flex-direction: column; gap: 0.5rem; }
+    .form-group label { font-size: 0.8rem; font-weight: 700; color: var(--text-dim); text-transform: uppercase; }
+
+    .modal-footer {
+        padding: 1.5rem 2rem;
+        background: rgba(0,0,0,0.1);
+        display: flex;
+        justify-content: flex-end;
+        gap: 1rem;
+    }
+
+    .btn-neon {
+        padding: 0.75rem 1.6rem;
+        border-radius: 14px;
+        background: linear-gradient(135deg, var(--neon-cyan), var(--neon-emerald));
+        border: none;
+        color: #05080f;
+        font-weight: 800;
+        cursor: pointer;
+        transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        text-transform: uppercase;
+        font-size: 0.85rem;
+        box-shadow: 0 0 20px rgba(0, 242, 255, 0.2);
+    }
+
+    .btn-neon:hover { transform: translateY(-3px) scale(1.02); box-shadow: 0 10px 30px rgba(0, 242, 255, 0.4); }
+    .btn-neon.generic { background: var(--btn-bg); color: var(--text-main); border: 1px solid rgba(255,255,255,0.1); box-shadow: none; }
+    .btn-neon.generic:hover { background: rgba(255,255,255,0.05); box-shadow: 0 5px 20px rgba(255,255,255,0.05); }
+    .btn-neon.gray { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: var(--text-dim); box-shadow: none; }
+
+    .neon-input {
+        background: rgba(0,0,0,0.3);
+        border: 1px solid rgba(255,255,255,0.1);
+        padding: 0.8rem 1rem;
+        border-radius: 10px;
+        color: white;
+        outline: none;
+        transition: all 0.3s;
+    }
+    .neon-input:focus { border-color: var(--accent-blue); box-shadow: 0 0 10px rgba(59, 130, 246, 0.2); }
+
+    .animate-in { animation: modalIn 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
+    @@keyframes modalIn {
+        from { opacity: 0; transform: scale(0.9) translateY(20px); }
+        to { opacity: 1; transform: scale(1) translateY(0); }
+    }
+</style>
+
+@code {
+    private List<RadioTask> stations = new();
+    private bool isLoading = true;
+    private bool isLightMode = false;
+    private bool isAddModalOpen = false;
+    private bool isScheduleModalOpen = false;
+    private RadioTask? editingStation = null;
+    private RadioTask? selectedStationForSchedule = null;
+    private List<MonitoringSchedule> stationSchedules = new();
+    private RadioTask model = new();
+    
+    // Form fields for new schedule
+    private DateTime newScheduleStart = DateTime.Today.AddHours(9);
+    private DateTime newScheduleEnd = DateTime.Today.AddHours(10);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadStations();
+    }
+
+    private async Task LoadStations()
+    {
+        isLoading = true;
+        stations = await ConfigService.LoadConfigAsync();
+        isLoading = false;
+    }
+
+    private void EditStation(RadioTask station)
+    {
+        editingStation = station;
+        model = new RadioTask
+        {
+            Id = station.Id,
+            Name = station.Name,
+            StreamUrl = station.StreamUrl,
+            City = station.City,
+            Region = station.Region,
+            Frequency = station.Frequency,
+            Category = station.Category,
+            MasterPath = station.MasterPath
+        };
+    }
+
+    private async Task SaveStation()
+    {
+        await ConfigService.SaveStationAsync(model);
+        CloseModal();
+        await LoadStations();
+    }
+
+    private async Task DeleteStation(RadioTask station)
+    {
+        bool confirmed = await JS.InvokeAsync<bool>("confirm", $"¿Seguro que deseas eliminar {station.Name}?");
+        if (confirmed)
+        {
+            await ConfigService.DeleteStationAsync(station.Id);
+            await LoadStations();
+        }
+    }
+
+    private void CloseModal()
+    {
+        isAddModalOpen = false;
+        editingStation = null;
+        model = new RadioTask();
+    }
+
+    private async Task OpenScheduleModal(RadioTask station)
+    {
+        selectedStationForSchedule = station;
+        isScheduleModalOpen = true;
+        await LoadSchedules();
+    }
+
+    private async Task LoadSchedules()
+    {
+        if (selectedStationForSchedule != null && int.TryParse(selectedStationForSchedule.Id, out int id))
+        {
+            stationSchedules = await ConfigService.GetSchedulesAsync(id);
+        }
+    }
+
+    private async Task AddSchedule()
+    {
+        if (selectedStationForSchedule != null && int.TryParse(selectedStationForSchedule.Id, out int id))
+        {
+            var sch = new MonitoringSchedule
+            {
+                RadioStationId = id,
+                StartTime = TimeOnly.FromDateTime(newScheduleStart),
+                EndTime = TimeOnly.FromDateTime(newScheduleEnd),
+                IsActive = true
+            };
+            await ConfigService.SaveScheduleAsync(sch);
+            await LoadSchedules();
+        }
+    }
+
+    private async Task RemoveSchedule(int id)
+    {
+        await ConfigService.DeleteScheduleAsync(id);
+        await LoadSchedules();
+    }
+
+    private async Task ExportJson()
+    {
+        var path = await ConfigService.ExportToJsonAsync();
+        await JS.InvokeVoidAsync("alert", $"Configuración respaldada en: {path}");
+    }
+}

@@ -1,0 +1,778 @@
+@page "/multi"
+@using Microsoft.AspNetCore.Authorization
+@using Sentinel.Dashboard.Services
+@using Sentinel.Dashboard.Components.Layout
+@* @attribute [Authorize] *@
+@inject WorkerOrchestrator Orchestrator
+@inject RadioConfigService ConfigService
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+@inject IHttpClientFactory ClientFactory
+@layout EmptyLayout
+@rendermode InteractiveServer
+@implements IDisposable
+
+<PageTitle>Multi-Radio - AirWitness</PageTitle>
+
+<style>
+    /* TOOLBAR — FILA ÚNICA GARANTIZADA */
+    .toolbar {
+        display: flex !important;
+        flex-direction: row !important;
+        flex-wrap: nowrap !important;
+        align-items: center !important;
+        justify-content: space-between !important;
+        gap: 1.5rem !important;
+        padding: 1rem 1.75rem !important;
+    }
+    .toolbar-left {
+        display: flex !important;
+        flex-direction: row !important;
+        flex-wrap: nowrap !important;
+        align-items: center !important;
+        gap: 1rem !important;
+        flex: 1 !important;
+        min-width: 0 !important;
+        overflow: visible !important;
+    }
+    .toolbar-right {
+        display: flex !important;
+        flex-direction: row !important;
+        flex-wrap: nowrap !important;
+        align-items: center !important;
+        gap: 0.75rem !important;
+        flex-shrink: 0 !important;
+    }
+    .search-wrapper {
+        display: flex !important;
+        flex-direction: row !important;
+        align-items: center !important;
+        gap: 0.5rem !important;
+        background: var(--btn-bg) !important;
+        border: 1px solid var(--border-color) !important;
+        border-radius: 12px !important;
+        padding: 0.6rem 1rem !important;
+        width: 260px !important;
+        min-width: 200px !important;
+        max-width: 300px !important;
+        flex-shrink: 0 !important;
+    }
+    .search-input {
+        background: transparent !important;
+        border: none !important;
+        outline: none !important;
+        color: var(--text-main) !important;
+        font-size: 0.85rem !important;
+        width: 100% !important;
+        min-width: 0 !important;
+    }
+    .filter-select {
+        width: auto !important;
+        min-width: 148px !important;
+        max-width: 180px !important;
+        flex-shrink: 0 !important;
+        padding: 0.6rem 0.9rem !important;
+    }
+    /* CARD ACTIONS */
+    .card-actions-row {
+        display: grid !important;
+        grid-template-columns: 1fr 1fr !important;
+        gap: 0.75rem !important;
+    }
+    .mini-actions {
+        display: flex !important;
+        flex-direction: row !important;
+        gap: 8px !important;
+    }
+</style>
+
+<div class="multi-dashboard-container @(isLightMode ? "light-mode" : "")">
+    <div class="top-nav frosted-glass">
+        <div class="nav-left">
+            <button class="btn-back" @onclick='() => Nav.NavigateTo("/")'>
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+                VOLVER
+            </button>
+            <div class="brand-title">AIRWITNESS <span class="badge">PRO</span></div>
+        </div>
+
+        <div class="nav-right" style="display: flex; align-items: center; gap: 15px;">
+            <WeatherNeonWidget />
+            <button class="btn-theme-toggle" @onclick="ToggleTheme" title="Cambiar Tema">
+                @if (isLightMode) { <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg> }
+                else { <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg> }
+            </button>
+
+            @if (showSaveSuccess) { <div class="save-toast">¡CONFIGURACIÓN GUARDADA!</div> }
+            <div class="toggle-group">
+                <button class="btn-toggle active" @onclick='() => Nav.NavigateTo("/multi")'>VISTA MONITOR</button>
+                <button class="btn-toggle" @onclick='() => Nav.NavigateTo("/maintenance/stations")'>GESTIÓN DB</button>
+            </div>
+            <div class="master-controls">
+                <button class="btn-master-start" @onclick="StartAllTasks">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" style="margin-right: 5px;"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                    INICIAR TODO
+                </button>
+                <button class="btn-master-stop" @onclick="StopAllTasks">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" style="margin-right: 5px;"><rect x="6" y="6" width="12" height="12"></rect></svg>
+                    DETENER TODO
+                </button>
+            </div>
+            <button class="btn-neon btn-sm" @onclick="SaveConfig">GUARDAR</button>
+        </div>
+    </div>
+
+    @* CABECERA DE ESTADÍSTICAS *@
+    <div class="stats-header">
+        <div class="stat-card">
+            <div class="stat-icon total">
+                <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+                    <line x1="8" y1="21" x2="16" y2="21"></line>
+                </svg>
+            </div>
+            <div class="stat-info">
+                <span class="stat-value">@radioTasks.Count(t => !string.IsNullOrWhiteSpace(t.StreamUrl))</span>
+                <span class="stat-label">Medios Activos</span>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon online">
+                <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M22 12h-4l-3 9L9 3l-3 9H2"></path>
+                </svg>
+            </div>
+            <div class="stat-info">
+                <span class="stat-value">@radioTasks.Count(t => Orchestrator.IsRunning(t.StreamUrl))</span>
+                <span class="stat-label">Online</span>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon offline">
+                <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <line x1="15" y1="9" x2="9" y2="15"></line>
+                    <line x1="9" y1="9" x2="15" y2="15"></line>
+                </svg>
+            </div>
+            <div class="stat-info">
+                <span class="stat-value">@radioTasks.Count(t => !string.IsNullOrWhiteSpace(t.StreamUrl) && !Orchestrator.IsRunning(t.StreamUrl))</span>
+                <span class="stat-label">Offline</span>
+            </div>
+        </div>
+    </div>
+
+    @* BARRA DE HERRAMIENTAS *@
+    <div class="toolbar">
+        <div class="toolbar-left">
+            <div class="search-wrapper">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                <input type="text" class="search-input" placeholder="Buscar por medio o ciudad..." @bind="searchTerm" @bind:event="oninput" />
+            </div>
+            <select class="filter-select" @bind="filterCity">
+                <option value="">Todas las ciudades</option>
+                @foreach (var city in radioTasks.Where(t => !string.IsNullOrEmpty(t.City)).Select(t => t.City).Distinct())
+                {
+                    <option value="@city">@city</option>
+                }
+            </select>
+            <select class="filter-select" @bind="filterStatus">
+                <option value="all">Todos los estados</option>
+                <option value="online">Online</option>
+                <option value="offline">Offline</option>
+            </select>
+        </div>
+        <div class="toolbar-right">
+            <button class="btn-validate" @onclick="ValidateAllLinks">
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+                PROBAR LINKS
+            </button>
+            <div class="toolbar-divider"></div>
+            <button class="btn-view @(isGridView ? "active" : "")" @onclick="() => isGridView = true" title="Vista Cuadrícula">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+            </button>
+            <button class="btn-view @(!isGridView ? "active" : "")" @onclick="() => isGridView = false" title="Vista Lista">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
+            </button>
+        </div>
+    </div>
+
+    @if (isGridView)
+    {
+        <div class="grid-container">
+            @foreach (var task in FilteredTasks)
+            {
+                <div class="radio-card @(Orchestrator.IsRunning(task.StreamUrl) ? "status-online" : "status-offline")">
+                    <div class="card-header">
+                        <div class="media-cell">
+                            <div class="media-icon">
+                                <button class="btn-play-live @(task.IsListeningLive ? "playing" : "")" @onclick="() => ToggleLiveStream(task)" title="Escuchar/Detener en vivo">
+                                    @if(task.IsListeningLive) { <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M6 6h12v12H6z"></path></svg> }
+                                    else { <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M8 5v14l11-7z"></path></svg> }
+                                </button>
+                            </div>
+                            <div class="media-info">
+                                @if (isConfigMode) { <input class="input-minimal media-name" @bind="task.Name" /> }
+                                else { <span class="media-name">@task.Name</span> }
+                                <div class="media-tag-container">
+                                    <span class="media-tag">@task.Category</span>
+                                    <span class="media-tag-frec">@task.Frequency</span>
+                                </div>
+                                @if (!isConfigMode) {
+                                    <div style="font-size: 0.65rem; color: var(--text-dim); margin-top: 4px; font-family: 'Fira Code', monospace; background: rgba(0,0,0,0.2); padding: 2px 6px; border-radius: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 180px;">
+                                        @task.StreamUrl
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                        <div class="status-dot @(Orchestrator.IsRunning(task.StreamUrl) ? "online" : "offline")"></div>
+                    </div>
+
+                    <div class="card-body">
+                        <div class="log-preview">@task.LastLog</div>
+                        
+                        <div class="stats-row">
+                            <div class="stat">
+                                <span class="label">PRECISIÓN</span>
+                                <span class="value">@task.BestConfidence.ToString("P0")</span>
+                            </div>
+                            <div class="stat">
+                                <span class="label">HITS</span>
+                                <span class="value">
+                                    @task.MatchHistory.Count
+                                    @if (task.MatchHistory.Any(m => !string.IsNullOrEmpty(m.EvidenceFile)))
+                                    {
+                                        <div class="evidence-pill">
+                                            <a href="/evidencia/@task.MatchHistory.First(m => !string.IsNullOrEmpty(m.EvidenceFile)).EvidenceFile" target="_blank" download title="Última Evidencia">
+                                                <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                                            </a>
+                                        </div>
+                                    }
+                                </span>
+                            </div>
+                            <div class="stat">
+                                <span class="label">LINK</span>
+                                @if (task.IsValidating) { <span class="value link-validating">⌛ PROBANDO</span> }
+                                else if (task.LinkStatus == "online") { <span class="value link-ok">● OK</span> }
+                                else if (task.LinkStatus == "offline") { <span class="value link-err">✕ ERROR</span> }
+                                else { <span class="value link-unknown">--</span> }
+                            </div>
+                        </div>
+
+                        <div class="commercial-status-zone">
+                            <div class="commercial-info">
+                                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>
+                                @if (string.IsNullOrEmpty(task.MasterPath)) { <span class="no-commercial">SIN COMERCIAL CARGADO</span> }
+                                else { <span class="commercial-name">@Path.GetFileName(task.MasterPath)</span> }
+                            </div>
+                            <div class="commercial-actions">
+                                <button class="btn-mini-play @(task.IsListeningSample ? "playing" : "")" @onclick="() => PlaySample(task)" title="Escuchar/Detener Comercial">
+                                    @if (task.IsListeningSample) { <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M6 6h12v12H6z"></path></svg> }
+                                    else { <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M8 5v14l11-7z"></path></svg> }
+                                </button>
+                                <label class="btn-mini-upload" title="Subir Nuevo Comercial">
+                                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                                    <InputFile OnChange="@(e => HandlePublicidadUpload(e, task))" hidden accept=".mp3,.wav,.ogg" />
+                                </label>
+                            </div>
+                        </div>
+
+                        @if (isConfigMode)
+                        {
+                            <div class="config-fields-inline">
+                                <div class="field-item">
+                                    <input placeholder="Nombre" @bind="task.Name" />
+                                </div>
+                                <div class="field-item">
+                                    <input placeholder="Ciudad" @bind="task.City" />
+                                </div>
+                                <div class="field-item">
+                                    <input placeholder="URL Streaming" @bind="task.StreamUrl" />
+                                </div>
+                            </div>
+                        }
+                    </div>
+
+                    @if (!isConfigMode)
+                    {
+                        <div class="card-actions-row">
+                            <button class="btn-action-main @(Orchestrator.IsRunning(task.StreamUrl) ? "active" : "")" @onclick="() => ToggleTask(task)">
+                                @(Orchestrator.IsRunning(task.StreamUrl) ? "DETENER" : "INICIAR")
+                            </button>
+                            <button class="btn-action-sec" @onclick="() => ShowTelemetry(task)">INFORME</button>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    }
+    else
+    {
+        <div class="list-view-container">
+            <table class="professional-table">
+                <thead>
+                    <tr>
+                        <th style="width: 250px;">Medio</th>
+                        <th>Estado</th>
+                        <th>Ciudad / Región</th>
+                        <th style="width: 300px;">URL Streaming</th>
+                        @if (isConfigMode) { <th style="text-align: right;">Publicidad</th> }
+                        else { <th style="text-align: right;">Acciones</th> }
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var task in FilteredTasks)
+                    {
+                        <tr class="@(Orchestrator.IsRunning(task.StreamUrl) ? "status-online" : "status-offline")">
+                            <td>
+                                <div class="media-cell">
+                                    <button class="btn-play-live-sm @(playingLiveUrl == task.StreamUrl ? "playing" : "")" @onclick="() => ToggleLiveStream(task)">
+                                        @if(playingLiveUrl == task.StreamUrl) { <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg> }
+                                        else { <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg> }
+                                    </button>
+                                    <div class="media-info">
+                                        @if (isConfigMode) { <input class="input-minimal media-name" @bind="task.Name" /> }
+                                        else { <span class="media-name">@task.Name</span> }
+                                        <span class="media-tag">@task.Category | @task.Frequency</span>
+                                    </div>
+                                </div>
+                            </td>
+                            <td>
+                                <div class="badge-status @(Orchestrator.IsRunning(task.StreamUrl) ? "online" : "offline")">
+                                    <div class="badge-dot"></div>
+                                    @(Orchestrator.IsRunning(task.StreamUrl) ? "ONLINE" : "OFFLINE")
+                                </div>
+                            </td>
+                            <td>
+                                <div class="meta-item">
+                                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path></svg>
+                                    @if (isConfigMode) { <input class="input-minimal" @bind="task.City" placeholder="Ciudad" /> }
+                                    else { <span>@task.City</span> }
+                                </div>
+                            </td>
+                            <td>
+                                @if (isConfigMode) { 
+                                    <div style="display: flex; align-items: center; gap: 8px;">
+                                        <input class="input-minimal" @bind="task.StreamUrl" placeholder="URL..." />
+                                        @if (task.IsValidating) { <div class="spinner-mini"></div> }
+                                        else if (task.LinkStatus == "online") { <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#9ece6a" stroke-width="3"><polyline points="20 6 9 17 4 12"></polyline></svg> }
+                                        else if (task.LinkStatus == "offline") { <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#f7768e" stroke-width="3"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg> }
+                                    </div>
+                                }
+                                else { <div class="stream-link"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path></svg> @task.StreamUrl</div> }
+                            </td>
+                            <td style="min-width: 180px;">
+                                <div class="commercial-status-zone mini">
+                                    <div class="commercial-info">
+                                        @if (string.IsNullOrEmpty(task.MasterPath)) { <span class="no-commercial">SIN AUDIO</span> }
+                                        else { <span class="commercial-name" title="@task.MasterPath">@Path.GetFileName(task.MasterPath)</span> }
+                                    </div>
+                                    <div class="commercial-actions">
+                                        <button class="btn-mini-play @(task.IsListeningSample ? "playing" : "")" @onclick="() => PlaySample(task)">
+                                            @if (task.IsListeningSample) { <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M6 6h12v12H6z"></path></svg> }
+                                            else { <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M8 5v14l11-7z"></path></svg> }
+                                        </button>
+                                        <label class="btn-mini-upload">
+                                            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                                            <InputFile OnChange="@(e => HandlePublicidadUpload(e, task))" hidden accept=".mp3,.wav,.ogg" />
+                                        </label>
+                                    </div>
+                                </div>
+                            </td>
+                            <td>
+                                <div class="mini-actions" style="justify-content: flex-end;">
+                                    <button class="btn-action-main @(Orchestrator.IsRunning(task.StreamUrl) ? "active" : "")" @onclick="() => ToggleTask(task)">
+                                        @(Orchestrator.IsRunning(task.StreamUrl) ? "DETENER" : "INICIAR")
+                                    </button>
+                                    <button class="btn-action-sec" @onclick="() => ShowTelemetry(task)" title="Ver Informe">
+                                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+@if (selectedRadioForTelemetry != null)
+{
+    <div class="modal-overlay" @onclick="CloseModal">
+        <div class="telemetry-modal frosted-glass ripple-border" @onclick:stopPropagation="true">
+            <div class="modal-header">
+                <h3>TELEMETRÍA EN TIEMPO REAL: <span class="cyan-text">@selectedRadioForTelemetry.Name</span></h3>
+                <button class="btn-close" @onclick="CloseModal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="matches-table-container">
+                    <table class="neon-table-sm">
+                        <thead>
+                            <tr>
+                                <th>HORA DETECCIÓN</th>
+                                <th>INICIO (STREAM)</th>
+                                <th>FIN (STREAM)</th>
+                                <th>CONFIANZA</th>
+                                <th>AUDIO</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @if (!selectedRadioForTelemetry.MatchHistory.Any())
+                            {
+                                <tr>
+                                    <td colspan="5" class="empty-msg">ESPERANDO DETECCIONES...</td>
+                                </tr>
+                            }
+                            else
+                            {
+                                @foreach (var m in selectedRadioForTelemetry.MatchHistory)
+                                {
+                                    var startTS = TimeSpan.FromSeconds((double)m.StreamElapsedSeconds);
+                                    var endTS = TimeSpan.FromSeconds((double)(m.StreamElapsedSeconds + m.MasterDuration));
+                                    
+                                    var startTime = string.Format("{0:D2}:{1:D2}:{2:D2}", startTS.Hours, startTS.Minutes, startTS.Seconds);
+                                    var endTime = string.Format("{0:D2}:{1:D2}:{2:D2}", endTS.Hours, endTS.Minutes, endTS.Seconds);
+                                    <tr>
+                                        <td>@m.Timestamp.Split('T')[1].Substring(0, 8)</td>
+                                        <td class="text-blue">@startTime</td>
+                                        <td class="text-red">@endTime</td>
+                                        <td class="text-green">@m.Confidence.ToString("P1")</td>
+                                        <td>
+                                            @if (!string.IsNullOrEmpty(m.EvidenceFile))
+                                            {
+                                                <a href="/evidencia/@m.EvidenceFile" target="_blank" class="btn-download-mini" title="Descargar Evidencia" download>
+                                                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                                                </a>
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-neon btn-sm" @onclick="CloseModal">CERRAR INFORME</button>
+            </div>
+        </div>
+    </div>
+}
+
+<audio id="samplePlayer" hidden></audio>
+<audio id="livePlayer" hidden></audio>
+
+@code {
+    private List<RadioTask> radioTasks = new();
+    private bool isConfigMode = false;
+    private bool showSaveSuccess = false;
+    private RadioTask? selectedRadioForTelemetry = null;
+    
+    // Filtros y Vista
+    private string searchTerm = "";
+    private string filterCity = "";
+    private string filterStatus = "all";
+    private bool isGridView = true;
+    private bool isLightMode = false;
+    private string playingLiveUrl = "";
+    private string playingSampleUrl = ""; // Nuevo estado para rastrear muestra comercial
+
+
+    private IEnumerable<RadioTask> FilteredTasks => radioTasks.Where(t => 
+        (string.IsNullOrWhiteSpace(searchTerm) || t.Name.Contains(searchTerm, StringComparison.OrdinalIgnoreCase) || t.City.Contains(searchTerm, StringComparison.OrdinalIgnoreCase)) &&
+        (string.IsNullOrEmpty(filterCity) || t.City == filterCity) &&
+        (filterStatus == "all" || (filterStatus == "online" && Orchestrator.IsRunning(t.StreamUrl)) || (filterStatus == "offline" && !Orchestrator.IsRunning(t.StreamUrl)))
+    );
+
+    private void ToggleTheme() => isLightMode = !isLightMode;
+
+    private async Task ToggleLiveStream(RadioTask task)
+    {
+        try
+        {
+            if (task.IsListeningLive)
+            {
+                task.IsListeningLive = false;
+                StateHasChanged();
+                await JS.InvokeVoidAsync("stopAudioById", "livePlayer");
+            }
+            else
+            {
+                foreach (var t in radioTasks) t.IsListeningLive = false;
+                task.IsListeningLive = true;
+                StateHasChanged();
+                
+                await JS.InvokeVoidAsync("stopAudioById", "livePlayer");
+                await JS.InvokeVoidAsync("playAudioById", "livePlayer", task.StreamUrl);
+            }
+        }
+        catch { }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        radioTasks = await ConfigService.LoadConfigAsync();
+        
+        Orchestrator.OnNewResult += HandleGlobalResult;
+        Orchestrator.OnLog += HandleGlobalLog;
+        Orchestrator.OnStatusChanged += StateChanged;
+    }
+
+    private async Task SaveConfig()
+    {
+        // Limpiamos URLs antes de guardar si detectamos patrones conocidos
+        foreach (var task in radioTasks)
+        {
+            CleanUrl(task);
+            if (!string.IsNullOrWhiteSpace(task.StreamUrl))
+            {
+                await ConfigService.SaveStationAsync(task);
+            }
+        }
+
+        showSaveSuccess = true;
+        StateHasChanged();
+        await Task.Delay(3000);
+        showSaveSuccess = false;
+        StateHasChanged();
+    }
+
+    private void CleanUrl(RadioTask task)
+    {
+        if (string.IsNullOrWhiteSpace(task.StreamUrl)) return;
+
+        var url = task.StreamUrl.Trim();
+
+        // Patrón SonicPanel / TuStreaming
+        if ((url.Contains("sonicpanel.cl") || url.Contains("tustreaming.cl")) && url.Contains("p="))
+        {
+            try {
+                var uri = new Uri(url);
+                var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(uri.Query);
+                if (query.TryGetValue("p", out var port)) {
+                    var host = uri.Host;
+                    task.StreamUrl = $"http://{host}:{port}/stream";
+                }
+            } catch {}
+        }
+        // Patrón TuneIn Embed
+        else if (url.Contains("tunein.com/embed/player/"))
+        {
+            // TuneIn es difícil de extraer sin scraping pesado, pero al menos quitamos basura HTML
+            task.StreamUrl = url.Split('?')[0];
+        }
+        
+        // Limpieza de etiquetas HTML accidentales
+        task.StreamUrl = task.StreamUrl.Replace("\">", "").Replace("</audio>", "").Split('"')[0].Trim();
+    }
+
+    private async Task ValidateAllLinks()
+    {
+        var client = ClientFactory.CreateClient();
+        client.Timeout = TimeSpan.FromSeconds(6);
+
+        foreach (var task in radioTasks.Where(t => 
+            !string.IsNullOrWhiteSpace(t.StreamUrl) &&
+            (t.StreamUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase) || 
+             t.StreamUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase))))
+        {
+            task.IsValidating = true;
+            task.LinkStatus = "checking";
+            StateHasChanged();
+
+            try
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                using var response = await client.GetAsync(task.StreamUrl, HttpCompletionOption.ResponseHeadersRead, cts.Token);
+                task.LinkStatus = (response.IsSuccessStatusCode || (int)response.StatusCode is 200 or 301 or 302) ? "online" : "offline";
+            }
+            catch (OperationCanceledException)
+            {
+                task.LinkStatus = "offline"; // timeout = sin respuesta = offline
+            }
+            catch
+            {
+                task.LinkStatus = "offline";
+            }
+
+            task.IsValidating = false;
+            StateHasChanged();
+        }
+    }
+
+    private void ShowTelemetry(RadioTask task)
+    {
+        selectedRadioForTelemetry = task;
+    }
+
+    private void CloseModal()
+    {
+        selectedRadioForTelemetry = null;
+    }
+
+    private async Task PlaySample(RadioTask task)
+    {
+        if (string.IsNullOrWhiteSpace(task.MasterPath)) return;
+        
+        try
+        {
+            if (task.IsListeningSample)
+            {
+                task.IsListeningSample = false;
+                StateHasChanged();
+                await StopSample();
+            }
+            else
+            {
+                foreach (var t in radioTasks) t.IsListeningSample = false;
+                task.IsListeningSample = true;
+                StateHasChanged();
+
+                var url = task.MasterPath;
+                if (url.Contains("wwwroot"))
+                {
+                    url = url.Split("wwwroot")[1].Replace("\\", "/");
+                }
+                
+                await JS.InvokeVoidAsync("playAudioById", "samplePlayer", url);
+            }
+        }
+        catch { }
+    }
+
+    private async Task StopSample()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("stopAudioById", "samplePlayer");
+            foreach (var t in radioTasks) t.IsListeningSample = false;
+            StateHasChanged();
+        }
+        catch { }
+    }
+
+    private async Task HandlePublicidadUpload(InputFileChangeEventArgs e, RadioTask task)
+    {
+        task.IsUploading = true;
+        StateHasChanged();
+
+        try
+        {
+            var radioSlug = GetSlug(task.Name);
+            var folder = Path.Combine(Environment.CurrentDirectory, "wwwroot", "assets", radioSlug);
+            
+            if (!Directory.Exists(folder)) Directory.CreateDirectory(folder);
+
+            var path = Path.Combine(folder, e.File.Name);
+            using (var fileStream = new FileStream(path, FileMode.Create))
+            {
+                await e.File.OpenReadStream(50 * 1024 * 1024).CopyToAsync(fileStream); // 50MB max
+            }
+            
+            // Guardamos la ruta relativa para el orquestador y la absoluta para Blazor si es necesario
+            task.MasterPath = path;
+            
+            // Mostrar toast de éxito
+            showSaveSuccess = true;
+            await Task.Delay(1500);
+            showSaveSuccess = false;
+        }
+        catch (Exception ex)
+        {
+            task.LastLog = $"Error subiendo: {ex.Message}";
+        }
+        finally
+        {
+            task.IsUploading = false;
+            StateHasChanged();
+        }
+    }
+
+    private string GetSlug(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return "radio-anonima";
+        return text.ToLower()
+                   .Replace(" ", "-")
+                   .Replace("ñ", "n")
+                   .Where(c => char.IsLetterOrDigit(c) || c == '-')
+                   .Aggregate("", (a, b) => a + b);
+    }
+
+    private void StartAllTasks()
+    {
+        foreach (var task in radioTasks)
+        {
+            if (!string.IsNullOrWhiteSpace(task.StreamUrl) && !string.IsNullOrWhiteSpace(task.MasterPath) && !Orchestrator.IsRunning(task.StreamUrl))
+            {
+                task.MatchHistory.Clear();
+                task.BestConfidence = 0;
+                task.LastLog = "Iniciando (Global)...";
+                Orchestrator.StartMonitor(task.MasterPath, task.StreamUrl);
+            }
+        }
+    }
+
+    private void StopAllTasks()
+    {
+        Orchestrator.StopAll();
+        foreach (var task in radioTasks)
+        {
+            task.LastLog = "Detenido globalmente.";
+        }
+        StateHasChanged();
+    }
+
+    private void ToggleTask(RadioTask task)
+    {
+        if (string.IsNullOrWhiteSpace(task.StreamUrl)) return;
+
+        if (Orchestrator.IsRunning(task.StreamUrl))
+        {
+            Orchestrator.StopMonitor(task.StreamUrl);
+        }
+        else
+        {
+            if (string.IsNullOrWhiteSpace(task.MasterPath))
+            {
+                task.LastLog = "⚠ Falta el audio publicitario. Ve a Configurar → sube el .mp3 del comercial.";
+                StateHasChanged();
+                return;
+            }
+            task.MatchHistory.Clear();
+            task.BestConfidence = 0;
+            task.LastLog = "Iniciando...";
+            Orchestrator.StartMonitor(task.MasterPath, task.StreamUrl);
+        }
+    }
+
+    private void HandleGlobalResult(MatchResult result)
+    {
+        var task = radioTasks.FirstOrDefault(t => t.StreamUrl == result.Source);
+        if (task != null)
+        {
+            if (result.Confidence > task.BestConfidence) task.BestConfidence = result.Confidence;
+            if (result.Match) task.MatchHistory.Insert(0, result);
+            InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void HandleGlobalLog(string message, string url)
+    {
+        var task = radioTasks.FirstOrDefault(t => t.StreamUrl == url);
+        if (task != null)
+        {
+            task.LastLog = message;
+            InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void StateChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose()
+    {
+        Orchestrator.OnNewResult -= HandleGlobalResult;
+        Orchestrator.OnLog -= HandleGlobalLog;
+        Orchestrator.OnStatusChanged -= StateChanged;
+    }
+}
