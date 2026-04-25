@@ -213,4 +213,10 @@ public class RadioConfigService
         }
         catch { }
     }
+
+    public async Task<string> GetConfigJsonAsync()
+    {
+        var tasks = await LoadConfigAsync();
+        return System.Text.Json.JsonSerializer.Serialize(tasks, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+    }
 }

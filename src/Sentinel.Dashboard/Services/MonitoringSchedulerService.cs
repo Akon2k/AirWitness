@@ -126,8 +126,8 @@ public class MonitoringSchedulerService : BackgroundService
             if (isInsideBufferWindow && !isRunning)
             {
                 _logger.LogInformation("[SCHEDULER] Iniciando radio {Station} por programación ({Start}-{End})", station.Name, schedule.StartTime, schedule.EndTime);
-                
-                _orchestrator.StartMonitor(station.DefaultMasterPath ?? "", station.StreamUrl);
+                var masterTitle = string.IsNullOrEmpty(station.DefaultMasterPath) ? "Comercial Programado" : System.IO.Path.GetFileNameWithoutExtension(station.DefaultMasterPath);
+                _orchestrator.StartMonitor(station.DefaultMasterPath ?? "", station.StreamUrl, masterTitle, station.Name);
                 _schedulerOwnedStreams.TryAdd(station.StreamUrl, 1);
             }
             // CASO 2: Detener monitoreo (ha pasado la hora de fin y fue iniciado por el scheduler)

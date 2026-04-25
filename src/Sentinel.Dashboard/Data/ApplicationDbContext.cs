@@ -21,24 +21,32 @@ namespace Sentinel.Dashboard.Data
         {
             base.OnModelCreating(modelBuilder);
 
-            // Configuraciones adicionales si fuera necesario
             modelBuilder.Entity<MatchRecord>()
                 .HasIndex(m => m.DetectionTime);
 
             modelBuilder.Entity<MatchRecord>()
                 .HasOne(m => m.RadioStation)
                 .WithMany(r => r.Matches)
-                .HasForeignKey(m => m.RadioStationId);
+                .HasForeignKey(m => m.RadioStationId)
+                .OnDelete(DeleteBehavior.Cascade);
 
             modelBuilder.Entity<MatchRecord>()
                 .HasOne(m => m.MasterAudio)
                 .WithMany(a => a.Matches)
-                .HasForeignKey(m => m.MasterAudioId);
+                .HasForeignKey(m => m.MasterAudioId)
+                .OnDelete(DeleteBehavior.Cascade);
 
             modelBuilder.Entity<MonitoringSchedule>()
                 .HasOne(s => s.RadioStation)
                 .WithMany(r => r.Schedules)
-                .HasForeignKey(s => s.RadioStationId);
+                .HasForeignKey(s => s.RadioStationId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<NotificationLog>()
+                .HasOne(n => n.RadioStation)
+                .WithMany()
+                .HasForeignKey(n => n.RadioStationId)
+                .OnDelete(DeleteBehavior.Cascade);
         }
     }
 }

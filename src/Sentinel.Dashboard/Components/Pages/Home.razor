@@ -259,7 +259,8 @@
             matchHistory.Clear();
             bestConfidence = 0;
             isMatchActive = false;
-            Orchestrator.StartMonitor(masterPath, streamUrl);
+            var masterTitle = string.IsNullOrEmpty(masterPath) ? "Comercial de Prueba" : Path.GetFileNameWithoutExtension(masterPath);
+            Orchestrator.StartMonitor(masterPath, streamUrl, masterTitle, "Monitor Local");
         }
     }
 

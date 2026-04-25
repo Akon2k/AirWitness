@@ -309,7 +309,8 @@
 
     private async Task ExportJson()
     {
-        var path = await ConfigService.ExportToJsonAsync();
-        await JS.InvokeVoidAsync("alert", $"Configuración respaldada en: {path}");
+        var json = await ConfigService.GetConfigJsonAsync();
+        var fileName = $"AirWitness_Backup_{DateTime.Now:yyyyMMdd_HHmm}.json";
+        await JS.InvokeVoidAsync("downloadJson", fileName, json);
     }
 }

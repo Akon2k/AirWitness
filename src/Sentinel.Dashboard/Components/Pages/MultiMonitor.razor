@@ -8,6 +8,7 @@
 @inject NavigationManager Nav
 @inject IJSRuntime JS
 @inject Sentinel.Dashboard.Services.ThemeService Theme
+@implements IDisposable
 @rendermode InteractiveServer
 
 <div class="dashboard-container @(isGridView ? "grid-mode" : "list-mode")">
@@ -469,6 +470,10 @@
     private bool showScheduleModal = false;
     private RadioTask? selectedTaskForSchedule = null;
 
+    // Optimizador UI
+    private System.Timers.Timer? _uiTimer;
+    private bool _needsRender = false;
+
     private IEnumerable<RadioTask> FilteredTasks => radioTasks
         .Where(t => string.IsNullOrEmpty(searchTerm) || t.Name.Contains(searchTerm, StringComparison.OrdinalIgnoreCase) || t.City.Contains(searchTerm, StringComparison.OrdinalIgnoreCase))
         .Where(t => string.IsNullOrEmpty(filterCity) || t.City == filterCity)
@@ -490,11 +495,11 @@
 
         Orchestrator.OnStatusChanged += () => InvokeAsync(StateHasChanged);
         
-        Orchestrator.OnLog += (log, url) => InvokeAsync(() => {
+        Orchestrator.OnLog += (log, url) => {
             var task = radioTasks.FirstOrDefault(t => t.StreamUrl == url);
             if (task != null) task.LastLog = log;
-            StateHasChanged();
-        });
+            _needsRender = true; // Solo marcamos que necesita render, el timer hará el trabajo.
+        };
 
         Orchestrator.OnNewResult += (match) => InvokeAsync(() => {
             var task = radioTasks.FirstOrDefault(t => t.StreamUrl == match.Source);
@@ -502,16 +507,28 @@
                 task.MatchHistory.Insert(0, match);
                 if (match.Confidence > task.BestConfidence) task.BestConfidence = match.Confidence;
             }
-            StateHasChanged();
+            StateHasChanged(); // Los matches sí los renderizamos al instante por su importancia
         });
-    }
 
+        // Iniciar timer de Debounce (Max 1 vez por segundo)
+        _uiTimer = new System.Timers.Timer(1000);
+        _uiTimer.Elapsed += (s, e) => {
+            if (_needsRender) {
+                _needsRender = false;
+                InvokeAsync(StateHasChanged);
+            }
+        };
+        _uiTimer.Start();
+    }
     private void ToggleTask(RadioTask task)
     {
         if (Orchestrator.IsRunning(task.StreamUrl))
             Orchestrator.StopMonitor(task.StreamUrl);
         else
-            Orchestrator.StartMonitor(task.MasterPath, task.StreamUrl);
+        {
+            var masterTitle = string.IsNullOrEmpty(task.MasterPath) ? "Comercial Desconocido" : Path.GetFileNameWithoutExtension(task.MasterPath);
+            Orchestrator.StartMonitor(task.MasterPath, task.StreamUrl, masterTitle, task.Name);
+        }
     }
 
     private async Task ToggleLiveStream(RadioTask task)
@@ -666,5 +683,21 @@
         await Task.Delay(2000);
         showSaveSuccess = false;
         StateHasChanged();
+    }
+
+    public void Dispose()
+    {
+        Theme.OnThemeChanged -= StateHasChanged;
+        if (_uiTimer != null)
+        {
+            _uiTimer.Stop();
+            _uiTimer.Dispose();
+        }
+        
+        // Evitar audios fantasma al cambiar de vista
+        if (!string.IsNullOrEmpty(playingLiveUrl) || !string.IsNullOrEmpty(playingSampleUrl))
+        {
+            _ = InvokeAsync(() => JS.InvokeVoidAsync("stopLiveAudio"));
+        }
     }
 }

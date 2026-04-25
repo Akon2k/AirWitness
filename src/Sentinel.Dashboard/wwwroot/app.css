@@ -140,6 +140,40 @@ a {
     flex-shrink: 0;
 }
 
+.btn-validate {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    color: #fff;
+    width: 44px; height: 44px;
+    border-radius: 12px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.2s;
+}
+
+.btn-validate:hover {
+    background: rgba(255,255,255,0.1);
+    transform: translateY(-2px);
+}
+
+.btn-validate.secondary {
+    width: auto;
+    padding: 0 1rem;
+    gap: 8px;
+    font-size: 0.75rem;
+    font-weight: 700;
+}
+
+.light-mode .btn-validate {
+    background: #fff;
+    border: 1px solid var(--border-color);
+    color: var(--text-color);
+}
+
+.light-mode .btn-validate:hover {
+    background: #f1f5f9;
+}
+
 .stat-icon.total  { background: rgba(122, 162, 247, 0.15); color: var(--text-accent); }
 .stat-icon.online { background: rgba(158, 206, 106, 0.15); color: var(--stat-online); }
 .stat-icon.offline{ background: rgba(247, 118, 142, 0.15); color: var(--stat-offline); }

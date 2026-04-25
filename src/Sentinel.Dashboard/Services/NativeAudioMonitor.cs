@@ -51,7 +51,7 @@ public class NativeAudioMonitor
     /// </summary>
     /// <param name="radioUrl">ID vinculante de la radio.</param>
     /// <param name="mp3Path">Ruta física del archivo comercial.</param>
-    public async Task RegisterMasterTrackAsync(string radioUrl, string mp3Path)
+    public async Task RegisterMasterTrackAsync(string radioUrl, string mp3Path, string masterTitle)
     {
         if (string.IsNullOrEmpty(mp3Path) || !File.Exists(mp3Path)) return;
 
@@ -65,7 +65,8 @@ public class NativeAudioMonitor
                 .From(audioSamples)
                 .Hash();
 
-            var trackInfo = new TrackInfo(radioUrl, "Comercial", radioUrl);
+            // Usar el título real del comercial en lugar de un genérico
+            var trackInfo = new TrackInfo(radioUrl, string.IsNullOrEmpty(masterTitle) ? "Comercial Desconocido" : masterTitle, radioUrl);
             _modelService.Insert(trackInfo, hash);
             _registeredMasters[radioUrl] = new TrackData { Track = trackInfo, Duration = (float)samples.Length / 5512f };
             
@@ -93,9 +94,10 @@ public class NativeAudioMonitor
     /// Captura audio del stream, lo procesa en un búfer circular y busca coincidencias cada 10 segundos.
     /// </summary>
     /// <param name="streamUrl">URL origen del audio.</param>
+    /// <param name="radioName">Nombre de la emisora (para organizar carpetas).</param>
     /// <param name="evidenceDir">Carpeta de destino para grabaciones de evidencia.</param>
     /// <param name="ct">Token para detener el proceso limpiamente.</param>
-    public async Task MonitorStreamAsync(string streamUrl, string evidenceDir, CancellationToken ct)
+    public async Task MonitorStreamAsync(string streamUrl, string radioName, string evidenceDir, CancellationToken ct)
     {
         string safeUrl = streamUrl.Replace("\"", "").Trim();
         
@@ -180,9 +182,12 @@ public class NativeAudioMonitor
                         
                         string dateFolder = DateTime.Now.ToString("yyyy-MM-dd");
                         var trackD = _registeredMasters.GetValueOrDefault(streamUrl);
-                        string radioName = trackD?.Track?.Title ?? "Desconocido"; // Usamos el ID o Título de la pista maestra registrada como nombre de carpeta
+                        string masterTitleName = trackD?.Track?.Title ?? "Desconocido";
                         
-                        string radioPath = Path.Combine(evidenceDir, radioName, dateFolder);
+                        // Guardar en: evidencia/NombreRadio/NombreComercial/YYYY-MM-DD
+                        string safeRadioName = string.Join("_", (radioName ?? "Radio").Split(Path.GetInvalidFileNameChars()));
+                        string safeMasterName = string.Join("_", masterTitleName.Split(Path.GetInvalidFileNameChars()));
+                        string radioPath = Path.Combine(evidenceDir, safeRadioName, safeMasterName, dateFolder);
                         if (!Directory.Exists(radioPath)) Directory.CreateDirectory(radioPath);
 
                         string dateStr = DateTime.Now.ToString("HHmmss");
@@ -190,7 +195,7 @@ public class NativeAudioMonitor
                         string outPath = Path.Combine(radioPath, fileName);
                         
                         // Guardamos la ruta relativa para la DB
-                        string dbRelativePath = Path.Combine(radioName, dateFolder, fileName);
+                        string dbRelativePath = Path.Combine(safeRadioName, safeMasterName, dateFolder, fileName);
 
                         await _audioSvc.SaveEvidenceAsync(evSamples, 5512, outPath);
 
@@ -208,7 +213,8 @@ public class NativeAudioMonitor
                                 OffsetSeconds = lastMatchOffset,
                                 StreamElapsedSeconds = lastMatchStreamElapsed,
                                 MasterDuration = trackD.Duration,
-                                EvidenceFile = dbRelativePath
+                                EvidenceFile = dbRelativePath,
+                                MasterTitle = trackD.Track.Title
                             };
 
                             OnMatchFound?.Invoke(payload);
@@ -369,4 +375,5 @@ public class TelemetryPayload
     public double StreamElapsedSeconds { get; set; }
     public double MasterDuration { get; set; }
     public string EvidenceFile { get; set; }
+    public string MasterTitle { get; set; }
 }

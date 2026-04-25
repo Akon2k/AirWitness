@@ -36,6 +36,9 @@ public class MatchResult
 
     [JsonPropertyName("evidence_file")]
     public string? EvidenceFile { get; set; }
+
+    [JsonPropertyName("master_title")]
+    public string MasterTitle { get; set; } = string.Empty;
 }
 
 public class WorkerOrchestrator : IDisposable
@@ -68,7 +71,8 @@ public class WorkerOrchestrator : IDisposable
                 OffsetSeconds = (decimal)payload.OffsetSeconds,
                 StreamElapsedSeconds = (decimal)payload.StreamElapsedSeconds,
                 MasterDuration = (decimal)payload.MasterDuration,
-                EvidenceFile = payload.EvidenceFile
+                EvidenceFile = payload.EvidenceFile,
+                MasterTitle = payload.MasterTitle
             };
 
             OnNewResult?.Invoke(result);
@@ -81,16 +85,11 @@ public class WorkerOrchestrator : IDisposable
                     var db = scope.ServiceProvider.GetRequiredService<Sentinel.Dashboard.Data.ApplicationDbContext>();
                     
                     var station = await db.RadioStations.FirstOrDefaultAsync(r => r.StreamUrl == result.Source);
-                    var audio = await db.MasterAudios.FirstOrDefaultAsync(a => a.LocalPath != null && result.Source.Contains(a.LocalPath)); 
-                    // Nota: El audio es más difícil de encontrar sin el ID, pero podemos intentar por el path del master registrado.
-                    // Por ahora, buscaremos el audio más reciente o el que coincida con el título si lo tuviéramos.
-                    // Simplificación: Buscamos el audio que tiene el path que se usó para registrar.
                     
                     if (station != null)
                     {
-                        // Intentar encontrar el audio por el path que el orchestrator conoce (en un escenario real pasaríamos el ID)
-                        var masterAudio = await db.MasterAudios.OrderByDescending(a => a.Id).FirstOrDefaultAsync(); // Placeholder
-                        await _alertService.NotifyDetectionAsync(station, masterAudio ?? new Sentinel.Dashboard.Models.Data.MasterAudio { Title = "Audio Desconocido" }, (double)result.Confidence);
+                        var masterAudio = await db.MasterAudios.FirstOrDefaultAsync(a => a.Title == result.MasterTitle);
+                        await _alertService.NotifyDetectionAsync(station, masterAudio ?? new Sentinel.Dashboard.Models.Data.MasterAudio { Title = result.MasterTitle ?? "Audio Desconocido" }, (double)result.Confidence);
                     }
                 });
             }
@@ -100,7 +99,7 @@ public class WorkerOrchestrator : IDisposable
     public bool IsRunning(string streamUrl) => _activeWorkers.ContainsKey(streamUrl);
     public bool AnyRunning => _activeWorkers.Count > 0;
 
-    public void StartMonitor(string masterPath, string streamUrl)
+    public void StartMonitor(string masterPath, string streamUrl, string masterTitle, string radioName)
     {
         if (IsRunning(streamUrl)) StopMonitor(streamUrl);
 
@@ -119,8 +118,8 @@ public class WorkerOrchestrator : IDisposable
 
             // Start processing natively in Background Task
             _ = Task.Run(async () => {
-                await _audioMonitor.RegisterMasterTrackAsync(streamUrl, masterPath);
-                await _audioMonitor.MonitorStreamAsync(streamUrl, workerDir, cts.Token);
+                await _audioMonitor.RegisterMasterTrackAsync(streamUrl, masterPath, masterTitle);
+                await _audioMonitor.MonitorStreamAsync(streamUrl, radioName, workerDir, cts.Token);
             }, cts.Token).ContinueWith(t => {
                 _activeWorkers.Remove(streamUrl);
                 OnStatusChanged?.Invoke();

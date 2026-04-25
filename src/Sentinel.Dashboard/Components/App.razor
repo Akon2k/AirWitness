@@ -44,6 +44,17 @@
             if (isLight) document.body.classList.add('light-mode');
             else document.body.classList.remove('light-mode');
         };
+        window.downloadJson = (fileName, jsonString) => {
+            const blob = new Blob([jsonString], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = fileName;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        };
     </script>
 </body>
 
