@@ -1,39 +1,37 @@
+# .gitignore para AirWitness
+
 # .NET
 [Bb]in/
 [Oo]bj/
-[Oo]ut/
 *.user
 *.userosscache
 *.sln.docstates
+.vs/
+
+# Docker & DB
+.docker/
+docker-data/
+postgres-data/
+*.db
+*.db-journal
 
 # Python
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
-.Python
+.env
+.venv
 env/
 venv/
-.venv/
-
-# Visual Studio / VS Code
-.vs/
-.vscode/
-*.suo
-*.user
-*.userosscache
-*.sln.docstates
-
-# Proyecto AirWitness (Persistencia Local)
-evidencia_compartida/
-assets_compartidos/
-postgres_data/
-src/Sentinel.Dashboard/wwwroot/uploads/**
-!src/Sentinel.Dashboard/wwwroot/uploads/.gitkeep
-
-# Docker
-.dockerignore
+pip-log.txt
+pip-delete-this-directory.txt
 
 # OS
 .DS_Store
 Thumbs.db
+
+# App Specific
+src/Sentinel.Dashboard/wwwroot/evidencia/*
+!src/Sentinel.Dashboard/wwwroot/evidencia/.gitkeep
+data/stations.json

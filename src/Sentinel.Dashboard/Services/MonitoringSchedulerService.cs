@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -16,17 +17,57 @@ public class MonitoringSchedulerService : BackgroundService
 {
     private readonly IServiceProvider _serviceProvider;
     private readonly WorkerOrchestrator _orchestrator;
+    private readonly IAlertService _alertService;
     private readonly ILogger<MonitoringSchedulerService> _logger;
-    private readonly HashSet<string> _schedulerOwnedStreams = new();
+    private readonly ConcurrentDictionary<string, byte> _schedulerOwnedStreams = new();
 
     public MonitoringSchedulerService(
         IServiceProvider serviceProvider,
         WorkerOrchestrator orchestrator,
+        IAlertService alertService,
         ILogger<MonitoringSchedulerService> logger)
     {
         _serviceProvider = serviceProvider;
         _orchestrator = orchestrator;
+        _alertService = alertService;
         _logger = logger;
+        
+        _orchestrator.OnNewResult += HandleMatchResult;
+        _orchestrator.OnLog += HandleOrchestratorLog;
+    }
+
+    private void HandleOrchestratorLog(string message, string sourceUrl)
+    {
+        if (message.Contains("Error", StringComparison.OrdinalIgnoreCase) || 
+            message.Contains("Failed", StringComparison.OrdinalIgnoreCase))
+        {
+            _ = Task.Run(async () => {
+                using var scope = _serviceProvider.CreateScope();
+                var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+                var station = await db.RadioStations.FirstOrDefaultAsync(r => r.StreamUrl == sourceUrl);
+                
+                if (station != null)
+                {
+                    await _alertService.NotifyStreamFailureAsync(station, message);
+                }
+            });
+        }
+    }
+
+    private void HandleMatchResult(MatchResult result)
+    {
+        if (result.Match && _schedulerOwnedStreams.ContainsKey(result.Source))
+        {
+            _logger.LogInformation("[SCHEDULER] Captura exitosa en {Source}. Esperando 7s delta antes de liberar...", result.Source);
+            
+            // Usamos un Fire-and-forget con delay para no bloquear el hilo de eventos sincronizados
+            _ = Task.Run(async () => {
+                await Task.Delay(7000); 
+                _orchestrator.StopMonitor(result.Source);
+                _schedulerOwnedStreams.TryRemove(result.Source, out _);
+                _logger.LogInformation("[SCHEDULER] Monitor detenido para {Source} tras delta de 7s.", result.Source);
+            });
+        }
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -76,8 +117,8 @@ public class MonitoringSchedulerService : BackgroundService
         foreach (var schedule in activeSchedules)
         {
             var station = schedule.RadioStation!;
-            bool isInsideWindow = now >= schedule.StartTime && now <= schedule.EndTime;
-            bool isInsideBufferWindow = bufferTime >= schedule.StartTime && now <= schedule.EndTime;
+            bool isInsideWindow = (now >= schedule.StartTime.AddMinutes(-5)) && (now <= schedule.EndTime);
+            bool isInsideBufferWindow = isInsideWindow; // Sincronizado para evitar rebote de start/stop
 
             bool isRunning = _orchestrator.IsRunning(station.StreamUrl);
 
@@ -87,15 +128,15 @@ public class MonitoringSchedulerService : BackgroundService
                 _logger.LogInformation("[SCHEDULER] Iniciando radio {Station} por programación ({Start}-{End})", station.Name, schedule.StartTime, schedule.EndTime);
                 
                 _orchestrator.StartMonitor(station.DefaultMasterPath ?? "", station.StreamUrl);
-                _schedulerOwnedStreams.Add(station.StreamUrl);
+                _schedulerOwnedStreams.TryAdd(station.StreamUrl, 1);
             }
             // CASO 2: Detener monitoreo (ha pasado la hora de fin y fue iniciado por el scheduler)
-            else if (!isInsideWindow && isRunning && _schedulerOwnedStreams.Contains(station.StreamUrl))
+            else if (!isInsideWindow && isRunning && _schedulerOwnedStreams.ContainsKey(station.StreamUrl))
             {
                 _logger.LogInformation("[SCHEDULER] Deteniendo radio {Station} (Fin de bloque programado)", station.Name);
                 
                 _orchestrator.StopMonitor(station.StreamUrl);
-                _schedulerOwnedStreams.Remove(station.StreamUrl);
+                _schedulerOwnedStreams.TryRemove(station.StreamUrl, out _);
             }
         }
     }

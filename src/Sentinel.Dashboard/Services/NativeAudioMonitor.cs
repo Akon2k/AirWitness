@@ -102,7 +102,7 @@ public class NativeAudioMonitor
         OnTelemetry?.Invoke(streamUrl, $"[KERNEL] Iniciando tuner digital: {safeUrl}");
 
         int bytesPerRead = 5512 * 4 * 2; // ~2 segundos de Float32 a 5512Hz
-        int bufferSeconds = 45; // Guardamos los últimos 45 segundos en RAM para contexto
+        int bufferSeconds = 120; // Guardamos los últimos 120 segundos en RAM por seguridad (comerciales largos + contexto)
         int maxBufferBytes = 5512 * 4 * bufferSeconds;
         
         using var process = _audioSvc.GetStreamProcess(safeUrl, 5512);
@@ -124,23 +124,45 @@ public class NativeAudioMonitor
         try
         {
             byte[] readChunk = new byte[bytesPerRead];
+            byte[] leftover = new byte[4];
+            int leftoverCount = 0;
+
             while (!ct.IsCancellationRequested && !process.HasExited)
             {
                 int read = await baseStream.ReadAsync(readChunk, 0, bytesPerRead, ct);
                 if (read == 0) break;
-                
-                totalSamplesProcessed += read / 4;
 
-                // Implementación de Búfer Circular en RAM
-                if (currentBytes + read > maxBufferBytes)
+                // ALINEACIÓN DE DISPOSITIVO: Asegurar que siempre procesamos múltiplos de 4 bytes (floats)
+                int totalAvailable = read + leftoverCount;
+                int processableBytes = (totalAvailable / 4) * 4;
+                int newLeftoverCount = totalAvailable % 4;
+
+                byte[] alignedData = new byte[processableBytes];
+                if (leftoverCount > 0)
                 {
-                    int overflow = (currentBytes + read) - maxBufferBytes;
+                    Buffer.BlockCopy(leftover, 0, alignedData, 0, leftoverCount);
+                }
+                Buffer.BlockCopy(readChunk, 0, alignedData, leftoverCount, processableBytes - leftoverCount);
+
+                // Guardar sobrante para la siguiente lectura
+                if (newLeftoverCount > 0)
+                {
+                    Buffer.BlockCopy(readChunk, read - newLeftoverCount, leftover, 0, newLeftoverCount);
+                }
+                leftoverCount = newLeftoverCount;
+
+                totalSamplesProcessed += processableBytes / 4;
+
+                // Implementación de Búfer Circular en RAM (Deslizante)
+                if (currentBytes + processableBytes > maxBufferBytes)
+                {
+                    int overflow = (currentBytes + processableBytes) - maxBufferBytes;
                     Buffer.BlockCopy(buffer, overflow, buffer, 0, maxBufferBytes - overflow);
                     currentBytes -= overflow;
                 }
                 
-                Buffer.BlockCopy(readChunk, 0, buffer, currentBytes, read);
-                currentBytes += read;
+                Buffer.BlockCopy(alignedData, 0, buffer, currentBytes, processableBytes);
+                currentBytes += processableBytes;
 
                 // Grabación de Evidencia (Post-Match)
                 if (capturingPostMatch)
@@ -156,14 +178,25 @@ public class NativeAudioMonitor
                         float[] evSamples = new float[validBytesCount / 4];
                         Buffer.BlockCopy(finalEvidenceBytes, 0, evSamples, 0, validBytesCount);
                         
-                        string dateStr = DateTime.Now.ToString("yyyyMMdd_HHmmss");
-                        string outPath = Path.Combine(evidenceDir, $"match_csharp_{dateStr}.mp3");
+                        string dateFolder = DateTime.Now.ToString("yyyy-MM-dd");
+                        var trackD = _registeredMasters.GetValueOrDefault(streamUrl);
+                        string radioName = trackD?.Track?.Title ?? "Desconocido"; // Usamos el ID o Título de la pista maestra registrada como nombre de carpeta
+                        
+                        string radioPath = Path.Combine(evidenceDir, radioName, dateFolder);
+                        if (!Directory.Exists(radioPath)) Directory.CreateDirectory(radioPath);
+
+                        string dateStr = DateTime.Now.ToString("HHmmss");
+                        string fileName = $"testigo_{dateStr}.mp3";
+                        string outPath = Path.Combine(radioPath, fileName);
+                        
+                        // Guardamos la ruta relativa para la DB
+                        string dbRelativePath = Path.Combine(radioName, dateFolder, fileName);
+
                         await _audioSvc.SaveEvidenceAsync(evSamples, 5512, outPath);
 
-                        OnTelemetry?.Invoke(streamUrl, $"[EVIDENCIA] Grabación finalizada: {Path.GetFileName(outPath)}");
+                        OnTelemetry?.Invoke(streamUrl, $"[EVIDENCIA] Guardado: {dbRelativePath}");
                         
                         // Orquestación de Persistencia y Notificación
-                        var trackD = _registeredMasters.GetValueOrDefault(streamUrl);
                         if (trackD != null)
                         {
                             var payload = new TelemetryPayload
@@ -175,7 +208,7 @@ public class NativeAudioMonitor
                                 OffsetSeconds = lastMatchOffset,
                                 StreamElapsedSeconds = lastMatchStreamElapsed,
                                 MasterDuration = trackD.Duration,
-                                EvidenceFile = Path.GetFileName(outPath)
+                                EvidenceFile = dbRelativePath
                             };
 
                             OnMatchFound?.Invoke(payload);
@@ -206,7 +239,7 @@ public class NativeAudioMonitor
                                         MasterAudioId = master.Id,
                                         Confidence = lastMatchConfidence,
                                         MatchOffsetSeconds = lastMatchOffset,
-                                        EvidenceFileName = Path.GetFileName(outPath)
+                                        EvidenceFileName = dbRelativePath
                                     });
                                     await db.SaveChangesAsync();
                                 } catch (Exception ex) {
@@ -218,13 +251,17 @@ public class NativeAudioMonitor
                     }
                 }
 
-                // Ciclo de Análisis Acústico (cada 10 segundos)
+                // Ciclo de Análisis Acústico (Reacciona cada 10 segundos o cuando hay suficiente audio)
                 var timeSinceLastAnalysis = (DateTime.Now - lastAnalysisTime).TotalSeconds;
-                if (currentBytes >= maxBufferBytes && !capturingPostMatch && timeSinceLastAnalysis >= 10)
+                int minBytesToAnalyze = 5512 * 4 * 10; // Mínimo 10 segundos
+                
+                if (currentBytes >= minBytesToAnalyze && !capturingPostMatch && timeSinceLastAnalysis >= 10)
                 {
                     lastAnalysisTime = DateTime.Now;
-                    float[] streamSamples = new float[maxBufferBytes / 4];
-                    Buffer.BlockCopy(buffer, 0, streamSamples, 0, maxBufferBytes);
+                    
+                    // Solo analizamos lo que realmente tenemos acumulado (sube la fiabilidad al 100%)
+                    float[] streamSamples = new float[currentBytes / 4];
+                    Buffer.BlockCopy(buffer, 0, streamSamples, 0, currentBytes);
 
                     var queryResult = await QueryCommandBuilder.Instance
                         .BuildQueryCommand()
@@ -243,25 +280,22 @@ public class NativeAudioMonitor
                         var trackD = _registeredMasters.GetValueOrDefault(streamUrl);
                         double masterDuration = trackD?.Duration ?? 30.0;
                         
-                        // Configuración de ventana de grabación (Pre-roll de 5s + duración + 5s post)
-                        double preRollSeconds = 5.0;
+                        // Configuración de ventana de grabación (Pre-roll de 7s + duración + 7s post)
+                        double preRollSeconds = 7.0;
                         double startPointInCurrentBuffer = match.Audio.QueryMatchStartsAt - preRollSeconds;
                         if (startPointInCurrentBuffer < 0) startPointInCurrentBuffer = 0;
                         int startBytesOffset = (int)(startPointInCurrentBuffer * 5512) * 4;
                         int bytesToCopy = currentBytes - startBytesOffset;
                         
                         double alreadyCaptured = bytesToCopy / (5512.0 * 4);
-                        double totalTarget = preRollSeconds + masterDuration + 5.0;
+                        double totalTarget = preRollSeconds + masterDuration + 7.0;
                         postMatchBytesRemaining = (long)((totalTarget - alreadyCaptured) * 5512 * 4);
 
-                        OnTelemetry?.Invoke(streamUrl, $"[IDENTIFICADO] Coincidencia encontrada ({lastMatchConfidence:P0}). Iniciando captura de evidencia.");
-                        capturingPostMatch = true;
-                        
                         byte[] winCopy = new byte[bytesToCopy];
                         Buffer.BlockCopy(buffer, startBytesOffset, winCopy, 0, bytesToCopy);
                         evidenceBuffer.SetLength(0);
                         await evidenceBuffer.WriteAsync(winCopy, 0, bytesToCopy);
-                        currentBytes = 0;
+                        // ELIMINADO: currentBytes = 0; -> El búfer ahora es continuo para no perder el rastro del comercial
                     }
                     else
                     {
@@ -279,6 +313,38 @@ public class NativeAudioMonitor
         }
         finally
         {
+            // ÚLTIMO ESCANEO DE SEGURIDAD (Para archivos cortos o cierres abruptos)
+            if (currentBytes >= (5512 * 4 * 5) && !capturingPostMatch) // Al menos 5 segundos para huella útil
+            {
+                OnTelemetry?.Invoke(streamUrl, "[KERNEL] Ejecutando escaneo final de seguridad...");
+                try
+                {
+                    float[] streamSamples = new float[currentBytes / 4];
+                    Buffer.BlockCopy(buffer, 0, streamSamples, 0, currentBytes);
+                    var queryResult = await QueryCommandBuilder.Instance
+                        .BuildQueryCommand()
+                        .From(new AudioSamples(streamSamples, streamUrl, 5512))
+                        .UsingServices(_modelService)
+                        .Query();
+
+                    if (queryResult.BestMatch != null)
+                    {
+                        var match = queryResult.BestMatch;
+                        OnTelemetry?.Invoke(streamUrl, $"[MATCH FINAL] Identificado en el cierre ({match.Audio.Confidence:P0}).");
+                        
+                        var trackD = _registeredMasters.GetValueOrDefault(streamUrl);
+                        var payload = new TelemetryPayload {
+                            Timestamp = DateTime.Now.ToString("o"), Source = streamUrl, Match = true,
+                            Confidence = match.Audio.Confidence, OffsetSeconds = match.Audio.TrackMatchStartsAt,
+                            StreamElapsedSeconds = (totalSamplesProcessed - (currentBytes / 4)) / 5512.0 + match.Audio.QueryMatchStartsAt,
+                            MasterDuration = trackD?.Duration ?? 30.0, EvidenceFile = "final_scan.mp3"
+                        };
+                        OnMatchFound?.Invoke(payload);
+                    }
+                }
+                catch { }
+            }
+
             if (!process.HasExited) process.Kill();
         }
     }

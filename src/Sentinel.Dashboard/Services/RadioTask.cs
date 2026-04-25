@@ -1,3 +1,5 @@
+using Sentinel.Dashboard.Models.Data;
+
 namespace Sentinel.Dashboard.Services;
 
 public class RadioTask
@@ -24,4 +26,8 @@ public class RadioTask
     // Propiedades de UI para control de audio local
     public bool IsListeningLive { get; set; }
     public bool IsListeningSample { get; set; }
+
+    // Horarios cargados desde la DB
+    public List<MonitoringSchedule> Schedules { get; set; } = new();
+    public bool IsScheduled { get; set; } // Estado stand-by
 }

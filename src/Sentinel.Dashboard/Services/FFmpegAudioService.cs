@@ -40,10 +40,12 @@ public class FFmpegAudioService
     /// <returns>Arreglo de floats conteniendo las muestras PCM decodificadas.</returns>
     public async Task<float[]> ReadAudioSamplesAsync(string filePath, int sampleRate = 5512, CancellationToken cancellationToken = default)
     {
+        string tlsOpt = filePath.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? "-tls_verify 0" : "";
+        
         var psi = new ProcessStartInfo
         {
             FileName = _ffmpegPath,
-            Arguments = $"-hide_banner -loglevel error -i \"{filePath}\" -f f32le -acodec pcm_f32le -ar {sampleRate} -ac 1 -",
+            Arguments = $"-hide_banner -loglevel error {tlsOpt} -i \"{filePath}\" -f f32le -acodec pcm_f32le -ar {sampleRate} -ac 1 -",
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
@@ -84,10 +86,12 @@ public class FFmpegAudioService
     /// <returns>Instancia del proceso FFmpeg en ejecución.</returns>
     public Process GetStreamProcess(string url, int sampleRate = 5512)
     {
+        string tlsOpt = url.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? "-tls_verify 0" : "";
+
         var psi = new ProcessStartInfo
         {
             FileName = _ffmpegPath,
-            Arguments = $"-hide_banner -loglevel error -re -i \"{url}\" -f f32le -acodec pcm_f32le -ar {sampleRate} -ac 1 -",
+            Arguments = $"-hide_banner -loglevel error {tlsOpt} -re -i \"{url}\" -f f32le -acodec pcm_f32le -ar {sampleRate} -ac 1 -",
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,

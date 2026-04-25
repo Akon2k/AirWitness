@@ -8,6 +8,7 @@ public class CustomAuthStateProvider : AuthenticationStateProvider
 {
     private readonly ProtectedSessionStorage _sessionStorage;
     private readonly ClaimsPrincipal _anonymous = new(new ClaimsIdentity());
+    private bool _isAuthenticatedInMemory = false; // Caché de sesión para evitar loops de túnel
 
     public CustomAuthStateProvider(ProtectedSessionStorage sessionStorage)
     {
@@ -16,16 +17,24 @@ public class CustomAuthStateProvider : AuthenticationStateProvider
 
     public override async Task<AuthenticationState> GetAuthenticationStateAsync()
     {
+        // 1. Prioridad: Caché en memoria (instantáneo, no requiere JS)
+        if (_isAuthenticatedInMemory)
+        {
+            var claims = new List<Claim> { new Claim(ClaimTypes.Name, "Admin") };
+            var identity = new ClaimsIdentity(claims, "CustomAuth");
+            return new AuthenticationState(new ClaimsPrincipal(identity));
+        }
+
         try
         {
             var sessionTask = _sessionStorage.GetAsync<bool>("IsAuthenticated");
-            var timeoutTask = Task.Delay(TimeSpan.FromSeconds(5)); // Aumentado para mayor estabilidad en demos
+            var timeoutTask = Task.Delay(TimeSpan.FromSeconds(1)); // Reducido para mayor agilidad en túneles
 
             var completedTask = await Task.WhenAny(sessionTask.AsTask(), timeoutTask);
 
             if (completedTask == timeoutTask)
             {
-                System.Console.WriteLine("[AUTH] ⚠ Timeout (5s) alcanzado recuperando sesión. Continuando como guest.");
+                System.Console.WriteLine("[AUTH] ⚠ Timeout de seguridad alcanzado. Accediendo como invitado para evitar cuelgue.");
                 return new AuthenticationState(_anonymous);
             }
 
@@ -34,20 +43,15 @@ public class CustomAuthStateProvider : AuthenticationStateProvider
 
             if (isAuthenticated)
             {
+                _isAuthenticatedInMemory = true; // Sincronizar el caché para futuras llamadas
                 var claims = new List<Claim> { new Claim(ClaimTypes.Name, "Admin") };
                 var identity = new ClaimsIdentity(claims, "CustomAuth");
                 var user = new ClaimsPrincipal(identity);
                 return new AuthenticationState(user);
             }
         }
-        catch (OperationCanceledException)
-        {
-            System.Console.WriteLine("[AUTH-PROVIDER] Timeout alcanzado al recuperar sesión. Continuando como anónimo.");
-        }
         catch (Exception ex)
         {
-            // Falla si JavaScript no está disponible (pre-rendering) o la sesión está corrupta
-            // Simplemente devolvemos anónimo de forma segura
             System.Console.WriteLine($"[AUTH-PROVIDER] Error recuperando sesión: {ex.Message}");
         }
 
@@ -56,7 +60,11 @@ public class CustomAuthStateProvider : AuthenticationStateProvider
 
     public async Task MarkUserAsAuthenticated()
     {
-        await _sessionStorage.SetAsync("IsAuthenticated", true);
+        _isAuthenticatedInMemory = true; // Setear caché ANTES del SetAsync para disponibilidad inmediata
+        try {
+            await _sessionStorage.SetAsync("IsAuthenticated", true);
+        } catch { } 
+        
         var claims = new List<Claim> { new Claim(ClaimTypes.Name, "Admin") };
         var identity = new ClaimsIdentity(claims, "CustomAuth");
         var user = new ClaimsPrincipal(identity);

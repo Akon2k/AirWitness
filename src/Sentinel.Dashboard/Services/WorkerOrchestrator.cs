@@ -5,6 +5,9 @@ using System.Linq;
 using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Sentinel.Dashboard.Models.Data;
 
 namespace Sentinel.Dashboard.Services;
 
@@ -38,22 +41,26 @@ public class MatchResult
 public class WorkerOrchestrator : IDisposable
 {
     private readonly NativeAudioMonitor _audioMonitor;
+    private readonly IAlertService _alertService;
+    private readonly IServiceProvider _serviceProvider;
     private readonly Dictionary<string, CancellationTokenSource> _activeWorkers = new();
     
     public event Action<MatchResult>? OnNewResult;
     public event Action<string, string>? OnLog; // Mensaje, SourceUrl
     public event Action? OnStatusChanged;
 
-    public WorkerOrchestrator(NativeAudioMonitor audioMonitor)
+    public WorkerOrchestrator(NativeAudioMonitor audioMonitor, IAlertService alertService, IServiceProvider serviceProvider)
     {
         _audioMonitor = audioMonitor;
+        _alertService = alertService;
+        _serviceProvider = serviceProvider;
         
         _audioMonitor.OnTelemetry += (url, msg) => {
             OnLog?.Invoke(msg, url);
         };
         
         _audioMonitor.OnMatchFound += (payload) => {
-            OnNewResult?.Invoke(new MatchResult {
+            var result = new MatchResult {
                 Timestamp = payload.Timestamp,
                 Source = payload.Source,
                 Match = payload.Match,
@@ -62,7 +69,31 @@ public class WorkerOrchestrator : IDisposable
                 StreamElapsedSeconds = (decimal)payload.StreamElapsedSeconds,
                 MasterDuration = (decimal)payload.MasterDuration,
                 EvidenceFile = payload.EvidenceFile
-            });
+            };
+
+            OnNewResult?.Invoke(result);
+
+            if (result.Match)
+            {
+                // Disparar alerta en segundo plano
+                _ = Task.Run(async () => {
+                    using var scope = _serviceProvider.CreateScope();
+                    var db = scope.ServiceProvider.GetRequiredService<Sentinel.Dashboard.Data.ApplicationDbContext>();
+                    
+                    var station = await db.RadioStations.FirstOrDefaultAsync(r => r.StreamUrl == result.Source);
+                    var audio = await db.MasterAudios.FirstOrDefaultAsync(a => a.LocalPath != null && result.Source.Contains(a.LocalPath)); 
+                    // Nota: El audio es más difícil de encontrar sin el ID, pero podemos intentar por el path del master registrado.
+                    // Por ahora, buscaremos el audio más reciente o el que coincida con el título si lo tuviéramos.
+                    // Simplificación: Buscamos el audio que tiene el path que se usó para registrar.
+                    
+                    if (station != null)
+                    {
+                        // Intentar encontrar el audio por el path que el orchestrator conoce (en un escenario real pasaríamos el ID)
+                        var masterAudio = await db.MasterAudios.OrderByDescending(a => a.Id).FirstOrDefaultAsync(); // Placeholder
+                        await _alertService.NotifyDetectionAsync(station, masterAudio ?? new Sentinel.Dashboard.Models.Data.MasterAudio { Title = "Audio Desconocido" }, (double)result.Confidence);
+                    }
+                });
+            }
         };
     }
 

@@ -1,0 +1,425 @@
+@page "/tools/doctor"
+@using Sentinel.Dashboard.Services
+@using Sentinel.Dashboard.Models.Data
+@inject RadioConfigService ConfigService
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+@inject Sentinel.Dashboard.Services.ThemeService Theme
+@rendermode InteractiveServer
+
+<PageTitle>Link Doctor - AirWitness</PageTitle>
+
+<div class="doctor-container">
+    <div class="doctor-header frosted-glass">
+        <div class="header-left">
+            <button class="btn-back" @onclick='() => Nav.NavigateTo("/multi")'>
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+            </button>
+            <div class="title-group">
+                <h1 class="gradient-text">Link Doctor</h1>
+                <p>Diagnóstico y reparación de flujos de streaming</p>
+            </div>
+        </div>
+        <div class="header-right">
+            @if (!isRunning)
+            {
+                <button class="btn-start-diag" @onclick="StartDiagnosis">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+                    INICIAR DIAGNÓSTICO
+                </button>
+            }
+            else
+            {
+                <div class="progress-container">
+                    <div class="progress-bar" style="width: @(progress)%"></div>
+                    <span class="progress-text">@currentIndex / @stations.Count</span>
+                </div>
+            }
+        </div>
+    </div>
+
+    <div class="doctor-content">
+        @if (stations == null || stations.Count == 0)
+        {
+            <div class="empty-state">
+                <div class="spinner"></div>
+                <p>Cargando red de estaciones...</p>
+            </div>
+        }
+        else
+        {
+            <div class="diagnosis-grid">
+                @foreach (var station in stations)
+                {
+                    var status = results.ContainsKey(station.Id) ? results[station.Id] : "pending";
+                    <div class="station-diag-card @status @(currentStation?.Id == station.Id ? "current" : "")" @onclick="() => SelectForRepair(station)">
+                        <div class="card-status-indicator"></div>
+                        <div class="card-main">
+                            <div class="station-info">
+                                <h3>@station.Name</h3>
+                                <span class="city">@station.City</span>
+                            </div>
+                            
+                            @if (currentStation?.Id == station.Id)
+                            {
+                                <div class="repair-zone animate-in">
+                                    <div class="url-input-group">
+                                        <input type="text" @bind="tempUrl" placeholder="Nueva URL de Streaming..." 
+                                               class="doctor-input @(isLastVerifyOk ? "valid" : (hasVerified && !isLastVerifyOk ? "invalid" : ""))" />
+                                        <button class="btn-verify @(isLastVerifyOk ? "success" : "")" @onclick="VerifyCurrent" disabled="@isVerifying">
+                                            @if(isVerifying) { <div class="spinner-sm"></div> }
+                                            else if(isLastVerifyOk) { <text>✓ OK</text> }
+                                            else { <text>PROBAR</text> }
+                                        </button>
+                                    </div>
+                                    
+                                    @if(hasVerified)
+                                    {
+                                        <div class="verify-feedback @(isLastVerifyOk ? "text-green" : "text-red")">
+                                            @(isLastVerifyOk ? "✓ Enlace verificado. Listo para guardar." : "✕ El enlace no responde. Intenta con otro.")
+                                        </div>
+                                    }
+
+                                    <div class="repair-actions">
+                                        <button class="btn-detective" @onclick='() => Nav.NavigateTo("/tools/detective")'>USAR DETECTIVE</button>
+                                        <button class="btn-update @(isLastVerifyOk ? "ready" : "")" @onclick="UpdateAndNext" disabled="@(!isLastVerifyOk)">GUARDAR Y SEGUIR</button>
+                                        <button class="btn-skip" @onclick="NextStation">SALTAR</button>
+                                    </div>
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="url-preview">@station.StreamUrl</div>
+                                <div class="status-badge @status">
+                                    @if(status == "ok") { <text>✓ ONLINE</text> }
+                                    else if(status == "error") { <text>✕ CAÍDA</text> }
+                                    else { <text>EN ESPERA</text> }
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+<style>
+    .doctor-container {
+        min-height: 100vh;
+        background: #050a10;
+        color: #fff;
+        padding: 2rem;
+        font-family: 'Inter', sans-serif;
+    }
+
+    .doctor-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 1.5rem 2.5rem;
+        border-radius: 20px;
+        border: 1px solid rgba(255,255,255,0.05);
+        margin-bottom: 2rem;
+        background: rgba(15, 23, 42, 0.6);
+        backdrop-filter: blur(20px);
+    }
+
+    .header-left { display: flex; align-items: center; gap: 1.5rem; }
+    .title-group h1 { margin: 0; font-size: 1.5rem; font-weight: 800; }
+    .title-group p { margin: 0; font-size: 0.85rem; color: rgba(255,255,255,0.4); }
+
+    .btn-back {
+        background: rgba(255,255,255,0.05);
+        border: 1px solid rgba(255,255,255,0.1);
+        color: #fff;
+        width: 44px; height: 44px;
+        border-radius: 12px;
+        cursor: pointer;
+        display: flex; align-items: center; justify-content: center;
+        transition: all 0.2s;
+    }
+
+    .btn-back:hover { background: rgba(255,255,255,0.1); transform: translateX(-3px); }
+
+    .btn-start-diag {
+        background: var(--text-accent);
+        color: #000;
+        border: none;
+        padding: 0.8rem 1.5rem;
+        border-radius: 12px;
+        font-weight: 800;
+        display: flex; align-items: center; gap: 10px;
+        cursor: pointer;
+        transition: all 0.3s;
+    }
+
+    .btn-start-diag:hover { transform: translateY(-2px); box-shadow: 0 5px 20px rgba(0, 242, 255, 0.4); }
+
+    .progress-container {
+        width: 250px;
+        height: 10px;
+        background: rgba(255,255,255,0.05);
+        border-radius: 5px;
+        position: relative;
+        overflow: hidden;
+    }
+
+    .progress-bar {
+        height: 100%;
+        background: var(--text-accent);
+        transition: width 0.4s ease;
+        box-shadow: 0 0 10px var(--text-accent);
+    }
+
+    .progress-text {
+        position: absolute;
+        right: 0; top: -20px;
+        font-size: 0.75rem;
+        color: var(--text-accent);
+        font-weight: 800;
+    }
+
+    .diagnosis-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+        gap: 1.5rem;
+    }
+
+    .station-diag-card {
+        background: rgba(255,255,255,0.02);
+        border: 1px solid rgba(255,255,255,0.05);
+        border-radius: 16px;
+        overflow: hidden;
+        display: flex;
+        transition: all 0.3s ease;
+    }
+
+    .station-diag-card.current {
+        border-color: var(--text-accent);
+        background: rgba(0, 242, 255, 0.03);
+        box-shadow: 0 0 30px rgba(0, 242, 255, 0.05);
+        transform: scale(1.02);
+    }
+
+    .card-status-indicator {
+        width: 6px;
+        background: rgba(255,255,255,0.1);
+    }
+
+    .station-diag-card.ok .card-status-indicator { background: var(--stat-online); }
+    .station-diag-card.error .card-status-indicator { background: var(--stat-offline); }
+    .station-diag-card.current .card-status-indicator { background: var(--text-accent); animation: pulse 1s infinite; }
+
+    @@keyframes pulse { 0% { opacity: 0.5; } 50% { opacity: 1; } 100% { opacity: 0.5; } }
+
+    .card-main { padding: 1.5rem; flex: 1; }
+    .station-info h3 { margin: 0; font-size: 1.1rem; font-weight: 700; }
+    .station-info .city { font-size: 0.75rem; color: rgba(255,255,255,0.4); text-transform: uppercase; }
+
+    .url-preview {
+        font-family: 'Fira Code', monospace;
+        font-size: 0.75rem;
+        color: rgba(255,255,255,0.3);
+        margin: 10px 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .status-badge {
+        font-size: 0.7rem;
+        font-weight: 800;
+        padding: 4px 10px;
+        border-radius: 6px;
+        display: inline-block;
+    }
+
+    .status-badge.ok { background: rgba(158, 206, 106, 0.1); color: var(--stat-online); }
+    .status-badge.error { background: rgba(255, 45, 85, 0.1); color: var(--stat-offline); }
+    .status-badge.pending { background: rgba(255,255,255,0.05); color: rgba(255,255,255,0.3); }
+
+    .repair-zone {
+        margin-top: 1.5rem;
+        padding-top: 1.5rem;
+        border-top: 1px solid rgba(255,255,255,0.05);
+    }
+
+    .url-input-group {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 1rem;
+    }
+
+    .doctor-input {
+        flex: 1;
+        background: #000;
+        border: 1px solid rgba(255,255,255,0.1);
+        border-radius: 8px;
+        padding: 0.6rem 1rem;
+        color: #fff;
+        font-size: 0.85rem;
+        outline: none;
+    }
+
+    .doctor-input:focus { border-color: var(--text-accent); }
+
+    .btn-verify {
+        background: rgba(255,255,255,0.05);
+        color: #fff;
+        border: 1px solid rgba(255,255,255,0.1);
+        padding: 0 1rem;
+        border-radius: 8px;
+        font-weight: 700;
+        font-size: 0.75rem;
+        cursor: pointer;
+    }
+
+    .repair-actions {
+        display: flex;
+        gap: 8px;
+    }
+
+    .repair-actions button {
+        flex: 1;
+        padding: 0.6rem;
+        border-radius: 8px;
+        font-size: 0.7rem;
+        font-weight: 700;
+        cursor: pointer;
+        transition: all 0.2s;
+        border: 1px solid transparent;
+    }
+
+    .btn-detective { background: rgba(122, 162, 247, 0.1); color: #7aa2f7; }
+    .btn-update { background: var(--text-accent); color: #000; }
+    .btn-update:disabled { opacity: 0.3; cursor: not-allowed; }
+    .doctor-input.valid { border-color: var(--stat-online); box-shadow: 0 0 10px rgba(158, 206, 106, 0.2); background: rgba(158, 206, 106, 0.05); }
+    .doctor-input.invalid { border-color: var(--stat-offline); box-shadow: 0 0 10px rgba(255, 45, 85, 0.2); background: rgba(255, 45, 85, 0.05); }
+
+    .btn-verify.success { background: var(--stat-online); color: #000; border: none; }
+
+    .btn-update.ready { 
+        background: var(--text-accent); 
+        color: #000; 
+        box-shadow: 0 0 20px rgba(0, 242, 255, 0.3);
+        transform: scale(1.05);
+    }
+
+    .verify-feedback {
+        font-size: 0.7rem;
+        margin-bottom: 1rem;
+        font-weight: 600;
+        animation: fadeIn 0.3s ease;
+    }
+
+    .text-green { color: var(--stat-online); }
+    .text-red { color: var(--stat-offline); }
+
+    @@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+    .btn-skip { background: rgba(255,255,255,0.05); color: #fff; }
+
+    .animate-in { animation: slideUp 0.4s ease-out; }
+    @@keyframes slideUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+    .spinner-sm { width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.2); border-top-color: #fff; border-radius: 50%; animation: spin 0.8s linear infinite; }
+    @@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+
+@code {
+    private List<RadioTask> stations = new();
+    private Dictionary<string, string> results = new();
+    private bool isRunning = false;
+    private int currentIndex = 0;
+    private double progress = 0;
+    private RadioTask? currentStation;
+    private string tempUrl = "";
+    private bool isVerifying = false;
+    private bool isLastVerifyOk = false;
+    private bool hasVerified = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        stations = await ConfigService.LoadConfigAsync();
+    }
+
+    private async Task StartDiagnosis()
+    {
+        isRunning = true;
+        currentIndex = 0;
+        results.Clear();
+        hasVerified = false;
+        
+        await RunNext();
+    }
+
+    private async Task RunNext()
+    {
+        if (currentIndex >= stations.Count)
+        {
+            isRunning = false;
+            progress = 100;
+            StateHasChanged();
+            return;
+        }
+
+        var station = stations[currentIndex];
+        progress = ((double)currentIndex / stations.Count) * 100;
+        StateHasChanged();
+
+        // Probar el link
+        var isOk = await ConfigService.ValidateStreamUrlAsync(station.StreamUrl);
+        results[station.Id] = isOk ? "ok" : "error";
+        
+        // Si hay error, marcamos esta estación como la actual para que el usuario la vea
+        if (!isOk && currentStation == null)
+        {
+            SelectForRepair(station);
+        }
+
+        currentIndex++;
+        StateHasChanged();
+        await RunNext();
+    }
+
+    private void SelectForRepair(RadioTask station)
+    {
+        currentStation = station;
+        tempUrl = station.StreamUrl;
+        isLastVerifyOk = false;
+        hasVerified = false;
+        StateHasChanged();
+    }
+
+    private async Task VerifyCurrent()
+    {
+        if (currentStation == null) return;
+        isVerifying = true;
+        hasVerified = true;
+        StateHasChanged();
+
+        isLastVerifyOk = await ConfigService.ValidateStreamUrlAsync(tempUrl);
+        
+        isVerifying = false;
+        StateHasChanged();
+    }
+
+    private async Task UpdateAndNext()
+    {
+        if (currentStation == null) return;
+        
+        currentStation.StreamUrl = tempUrl;
+        await ConfigService.SaveStationAsync(currentStation);
+        results[currentStation.Id] = "ok";
+        
+        currentIndex++;
+        await RunNext();
+    }
+
+    private async Task NextStation()
+    {
+        currentIndex++;
+        await RunNext();
+    }
+}

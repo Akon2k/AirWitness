@@ -15,6 +15,7 @@ namespace Sentinel.Dashboard.Data
         public DbSet<RadioStation> RadioStations { get; set; }
         public DbSet<MatchRecord> MatchRecords { get; set; }
         public DbSet<MonitoringSchedule> MonitoringSchedules { get; set; }
+        public DbSet<NotificationLog> NotificationLogs { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {

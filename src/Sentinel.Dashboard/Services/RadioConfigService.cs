@@ -28,17 +28,32 @@ public class RadioConfigService
         using var scope = _scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
-        var stations = await db.RadioStations.ToListAsync();
+        var stations = await db.RadioStations
+            .Include(s => s.Schedules)
+            .ToListAsync();
         
         // Si no hay estaciones en DB, intentamos migrar desde JSON una sola vez
         if (stations.Count == 0 && File.Exists(_configPath))
         {
             await AutoMigrateFromJsonAsync();
-            stations = await db.RadioStations.ToListAsync();
+            stations = await db.RadioStations.Include(s => s.Schedules).ToListAsync();
         }
 
         return stations.Select(ToTask).ToList();
     }
+
+    private RadioTask ToTask(RadioStation s) => new RadioTask
+    {
+        Id = s.Id.ToString(),
+        Name = s.Name,
+        StreamUrl = s.StreamUrl,
+        MasterPath = s.DefaultMasterPath ?? "",
+        City = s.City ?? "",
+        Region = s.Region ?? "",
+        Frequency = s.Frequency ?? "",
+        Category = s.Category ?? "Radio",
+        Schedules = s.Schedules.ToList()
+    };
 
     public async Task SaveStationAsync(RadioTask task)
     {
@@ -72,14 +87,35 @@ public class RadioConfigService
     {
         if (!int.TryParse(taskId, out int id)) return;
 
-        using var scope = _scopeFactory.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-
-        var station = await db.RadioStations.FindAsync(id);
-        if (station != null)
+        try
         {
-            db.RadioStations.Remove(station);
-            await db.SaveChangesAsync();
+            using var scope = _scopeFactory.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+            var station = await db.RadioStations
+                .Include(s => s.Schedules)
+                .Include(s => s.Matches)
+                .FirstOrDefaultAsync(s => s.Id == id);
+
+            if (station != null)
+            {
+                // Eliminar dependencias manualmente por seguridad de FK
+                if (station.Schedules != null) db.MonitoringSchedules.RemoveRange(station.Schedules);
+                if (station.Matches != null) db.MatchRecords.RemoveRange(station.Matches);
+                
+                // Limpiar logs de notificaciones vinculados
+                var logs = await db.NotificationLogs.Where(l => l.RadioStationId == id).ToListAsync();
+                if (logs.Any()) db.NotificationLogs.RemoveRange(logs);
+                
+                db.RadioStations.Remove(station);
+                await db.SaveChangesAsync();
+                Console.WriteLine($"[BORRADO] Estación {id} ({station.Name}) eliminada exitosamente.");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ERROR] Falló el borrado de la estación {id}: {ex.Message}");
+            throw; 
         }
     }
 
@@ -147,6 +183,21 @@ public class RadioConfigService
         }
     }
 
+    public async Task<bool> ValidateStreamUrlAsync(string url)
+    {
+        try
+        {
+            using var handler = new HttpClientHandler { 
+                ServerCertificateCustomValidationCallback = (sender, cert, chain, sslPolicyErrors) => true 
+            };
+            using var client = new HttpClient(handler);
+            client.Timeout = TimeSpan.FromSeconds(5);
+            var response = await client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead);
+            return response.IsSuccessStatusCode;
+        }
+        catch { return false; }
+    }
+
     private async Task AutoMigrateFromJsonAsync()
     {
         try
@@ -162,16 +213,4 @@ public class RadioConfigService
         }
         catch { }
     }
-
-    private RadioTask ToTask(RadioStation s) => new RadioTask
-    {
-        Id = s.Id.ToString(),
-        Name = s.Name,
-        StreamUrl = s.StreamUrl,
-        MasterPath = s.DefaultMasterPath ?? "",
-        City = s.City ?? "",
-        Region = s.Region ?? "",
-        Frequency = s.Frequency ?? "",
-        Category = s.Category ?? "Radio"
-    };
 }

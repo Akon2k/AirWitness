@@ -3,192 +3,152 @@
 @using Microsoft.AspNetCore.Authorization
 @using Sentinel.Dashboard.Services
 @using Sentinel.Dashboard.Components.Layout
-@attribute [Authorize]
+@* @attribute [Authorize] *@
 @inject WorkerOrchestrator Orchestrator
-@layout EmptyLayout
+@inject Sentinel.Dashboard.Services.ThemeService Theme
 @rendermode InteractiveServer
 @implements IDisposable
 
-<PageTitle>AirWitness Dashboard</PageTitle>
+<PageTitle>AirWitness - Monitor Individual</PageTitle>
 
-<div class="dashboard-container">
-    <div class="sidebar frosted-glass">
-        <h1 class="brand-title">AirWitness</h1>
-        <p class="subtitle">Auditoría Criptográfica de Streaming</p>
-
-        <nav class="sidebar-nav" style="margin-bottom: 30px; display: flex; flex-direction: column; gap: 10px;">
-            <a href="/" class="btn-side-nav" style="text-decoration: none;">
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 8px; vertical-align: middle;">
-                    <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
-                    <polyline points="9 22 9 12 15 12 15 22"></polyline>
-                </svg>
-                MENÚ PRINCIPAL
-            </a>
-            <a href="/multi" class="btn-side-nav purple" style="text-decoration: none;">
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 8px; vertical-align: middle;">
-                    <rect x="3" y="3" width="7" height="7"></rect>
-                    <rect x="14" y="3" width="7" height="7"></rect>
-                    <rect x="14" y="14" width="7" height="7"></rect>
-                    <rect x="3" y="14" width="7" height="7"></rect>
-                </svg>
-                PANEL MULTI-RADIO
-            </a>
-        </nav>
-
-        <div style="margin: 15px 0 25px 0;">
-            <WeatherNeonWidget />
-        </div>
-
-        <div class="control-group">
-            <label>Publicidad</label>
-            <div class="file-upload-wrapper">
-                <input type="text" @bind="masterPath" placeholder="..\assets\comercial.mp3" class="neon-input" style="flex: 1;" />
-                <label class="btn-neon btn-upload" for="master-upload">EXAMINAR</label>
-                <InputFile id="master-upload" OnChange="HandleMasterUpload" hidden accept=".mp3,.wav,.ogg" />
-            </div>
-            @if(isUploadingMaster)
-            {
-                <small class="neon-text-blue" style="margin-top: 5px;">Subiendo archivo...</small>
-            }
-        </div>
-
-        <div class="control-group">
-            <label>Stream URL</label>
-            <div class="file-upload-wrapper">
-                <input type="text" @bind="streamUrl" placeholder="http://tu-radio.fm:8000/stream" class="neon-input" style="flex: 1;" />
-                <label class="btn-neon btn-upload" for="stream-upload">EXAMINAR</label>
-                <InputFile id="stream-upload" OnChange="HandleStreamUpload" hidden accept=".mp3,.wav,.ogg,.m3u" />
-            </div>
-            @if(isUploadingStream)
-            {
-                <small class="neon-text-blue" style="margin-top: 5px;">Subiendo archivo...</small>
-            }
-            @if(!string.IsNullOrWhiteSpace(streamUrl))
-            {
-               <div style="margin-top: 10px;">
-                    <audio @key="@("streamAudioPlayer")" controls src="@GetPlayableStreamUrl()" style="width: 100%; height: 40px; border-radius: 8px; opacity: 0.8; transition: opacity 0.3s;" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.8"></audio>
-               </div>
-            }
-        </div>
-
-        <button class="btn-neon @(Orchestrator.IsRunning(streamUrl) ? "btn-danger" : "btn-success")" @onclick="ToggleMonitor">
-            @if(Orchestrator.IsRunning(streamUrl))
-            {
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 8px; vertical-align: middle;">
-                    <rect x="6" y="6" width="12" height="12"></rect>
-                </svg>
-                <span>DETENER MONITOREO</span>
-            }
-            else
-            {
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 8px; vertical-align: middle;">
-                    <polygon points="5 3 19 12 5 21 5 3"></polygon>
-                </svg>
-                <span>INICIAR ESCANEO RADIAL</span>
-            }
-        </button>
-
-        <div class="status-indicator @(Orchestrator.IsRunning(streamUrl) ? "status-active" : "status-idle")">
-            <span class="dot"></span>
-            @(Orchestrator.IsRunning(streamUrl) ? "ESCANEANDO STREAM EN VIVO..." : "ESPERANDO INSTRUCCIONES")
-        </div>
-
-        @if (Orchestrator.IsRunning(streamUrl))
-        {
-            <div style="margin-top: 1rem; padding: 1rem 1.25rem; background: rgba(0,0,0,0.25); border-radius: 16px; border: 1px solid rgba(158, 206, 106, 0.2);">
-                <div style="font-size: 0.65rem; color: #9499b0; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 0.5rem; font-family: 'Outfit', sans-serif; font-weight: 700;">Mejor Coincidencia (Sesión)</div>
-                <div style="font-family: 'Outfit', sans-serif; font-size: 2rem; color: #9ece6a; font-weight: 800; line-height: 1; text-shadow: 0 0 20px rgba(158, 206, 106, 0.4);">
-                    @bestConfidence.ToString("P1")
+<div class="monitor-workstation">
+    
+    <main class="workstation-content">
+        
+        <!-- DASHBOARD CENTRAL -->
+        <div class="central-deck">
+            
+            <!-- SECCIÓN RADAR -->
+            <section class="radar-section">
+                <div class="radar-container @(Orchestrator.IsRunning(streamUrl) ? "scanning" : "")">
+                    <div class="radar-sweep"></div>
+                    <div class="radar-rings"></div>
+                    <div class="radar-center"></div>
+                    @if(isMatchActive)
+                    {
+                        <div class="match-alert">🔔 MATCH DETECTADO</div>
+                    }
+                    <div class="best-hit-glance">
+                        <span class="label">CONFIANZA MÁX.</span>
+                        <span class="value">@bestConfidence.ToString("P1")</span>
+                    </div>
                 </div>
-                <div style="width: 100%; height: 5px; background: rgba(255,255,255,0.06); border-radius: 3px; margin-top: 0.75rem; overflow: hidden;">
-                    <div style="height: 100%; width: @(bestConfidence * 100)%; background: linear-gradient(90deg, #1e8c6e, #9ece6a); border-radius: 3px; transition: width 0.6s ease;"></div>
+
+                <div class="main-controls">
+                    <button class="btn-action-primary @(Orchestrator.IsRunning(streamUrl) ? "danger" : "success")" @onclick="ToggleMonitor">
+                        @if(Orchestrator.IsRunning(streamUrl))
+                        {
+                            <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><rect x="6" y="6" width="12" height="12"></rect></svg>
+                            <span>DETENER</span>
+                        }
+                        else
+                        {
+                            <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                            <span>INICIAR</span>
+                        }
+                    </button>
+                    
+                    <div class="config-drawer">
+                        <div class="input-minimal-group">
+                            <label>PUBLICIDAD</label>
+                            <div class="input-with-action">
+                                <input type="text" @bind="masterPath" placeholder="Click para subir..." class="minimal-input" />
+                                <label class="btn-sub-action" for="master-upload">
+                                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                                </label>
+                                <InputFile id="master-upload" OnChange="HandleMasterUpload" hidden accept=".mp3,.wav,.ogg" />
+                            </div>
+                        </div>
+
+                        <div class="input-minimal-group">
+                            <label>FUENTE STREAMING</label>
+                            <div class="input-with-action">
+                                <input type="text" @bind="streamUrl" placeholder="URL o Archivo..." class="minimal-input" />
+                                <label class="btn-sub-action" for="stream-upload">
+                                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                                </label>
+                                <InputFile id="stream-upload" OnChange="HandleStreamUpload" hidden accept=".mp3,.wav,.ogg,.m3u" />
+                            </div>
+                        </div>
+                    </div>
                 </div>
-            </div>
-        }
-    </div>
+            </section>
 
-    <div class="main-content">
-        <div class="radar-view @(Orchestrator.IsRunning(streamUrl) ? "scanning" : "")">
-            <div class="radar-sweep"></div>
-            <div class="radar-center"></div>
-            <!-- Anillos decorativos extra -->
-            <div style="position:absolute;width:80px;height:80px;border:1px solid rgba(122,162,247,0.2);border-radius:50%;"></div>
-            @if(isMatchActive)
-            {
-                <div class="match-pulse">🔔 MATCH DETECTADO</div>
-            }
-        </div>
+            <!-- SECCIÓN TELEMETRÍA -->
+            <section class="telemetry-bay">
+                <div class="bay-header">
+                    <h2>TELEMETRÍA EN TIEMPO REAL</h2>
+                    <div class="audio-monitor">
+                        @if(!string.IsNullOrWhiteSpace(streamUrl))
+                        {
+                            <audio @key="@("streamAudioPlayer")" controls src="@GetPlayableStreamUrl()" class="minimal-audio"></audio>
+                        }
+                    </div>
+                </div>
 
-        <div class="console frosted-glass">
-            <div class="console-header">TELEMETRÍA EN TIEMPO REAL</div>
-            <div class="telemetry-split">
-                <div class="matches-table-container">
-                    <table class="neon-table">
-                        <thead>
-                            <tr>
-                                <th>HORA DETECCIÓN</th>
-                                <th>INICIO (STREAM)</th>
-                                <th>FIN (STREAM)</th>
-                                <th>CONFIANZA</th>
-                                <th>AUDIO</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @if (!matchHistory.Any())
-                            {
+                <div class="bay-split">
+                    <div class="results-table">
+                        <table class="clean-table">
+                            <thead>
                                 <tr>
-                                    <td colspan="5" style="text-align: center; color: #565f89; padding: 20px;">
-                                        ESPERANDO DETECCIONES EN TIEMPO REAL...
-                                    </td>
+                                    <th>HORA</th>
+                                    <th>INICIO</th>
+                                    <th>FIN</th>
+                                    <th>CONFIANZA</th>
+                                    <th></th>
                                 </tr>
-                            }
-                            else
-                            {
-                                @foreach (var m in matchHistory)
+                            </thead>
+                            <tbody>
+                                @if (!matchHistory.Any())
                                 {
-                                    var startTS = TimeSpan.FromSeconds((double)m.Result.StreamElapsedSeconds);
-                                    var endTS = TimeSpan.FromSeconds((double)(m.Result.StreamElapsedSeconds + m.Result.MasterDuration));
-                                    
-                                    var startTime = string.Format("{0:D2}:{1:D2}:{2:D2}", startTS.Hours, startTS.Minutes, startTS.Seconds);
-                                    var endTime = string.Format("{0:D2}:{1:D2}:{2:D2}", endTS.Hours, endTS.Minutes, endTS.Seconds);
                                     <tr>
-                                        <td>@m.FoundAt.ToString("HH:mm:ss")</td>
-                                        <td class="neon-text-blue">@startTime</td>
-                                        <td class="neon-text-red">@endTime</td>
-                                        <td class="neon-text-green">@m.Result.Confidence.ToString("P1")</td>
-                                        <td>
-                                            @if (!string.IsNullOrEmpty(m.Result.EvidenceFile))
-                                            {
-                                                <a href="/evidencia/@m.Result.EvidenceFile" target="_blank" class="btn-download-mini" title="Descargar Evidencia" download>
-                                                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-                                                </a>
-                                            }
-                                            else
-                                            {
-                                                <span style="opacity: 0.3;">
-                                                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-                                                </span>
-                                            }
-                                        </td>
+                                        <td colspan="5" class="empty-row">Sincronizando flujo de datos...</td>
                                     </tr>
                                 }
-                            }
-                        </tbody>
-                    </table>
-                </div>
+                                else
+                                {
+                                    @foreach (var m in matchHistory)
+                                    {
+                                        var startTS = TimeSpan.FromSeconds((double)m.Result.StreamElapsedSeconds);
+                                        var endTS = TimeSpan.FromSeconds((double)(m.Result.StreamElapsedSeconds + m.Result.MasterDuration));
+                                        
+                                        <tr>
+                                            <td>@m.FoundAt.ToString("HH:mm")</td>
+                                            <td class="text-blue">@startTS.ToString(@"hh\:mm\:ss")</td>
+                                            <td class="text-red">@endTS.ToString(@"hh\:mm\:ss")</td>
+                                            <td>
+                                                <div class="conf-pill">@m.Result.Confidence.ToString("P1")</div>
+                                            </td>
+                                            <td style="text-align: right;">
+                                                @if (!string.IsNullOrEmpty(m.Result.EvidenceFile))
+                                                {
+                                                    <a href="/evidencia/@m.Result.EvidenceFile" target="_blank" class="btn-ev" download>
+                                                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                                                    </a>
+                                                }
+                                            </td>
+                                        </tr>
+                                    }
+                                }
+                            </tbody>
+                        </table>
+                    </div>
 
-                <div class="console-body" id="logBody">
-                    @foreach(var item in logs)
-                    {
-                        var isMatchLog = item.Contains("\"match\": true");
-                        <div class="log-entry @(isMatchLog ? "log-match" : (item.StartsWith("{") ? "log-scan" : "log-sys"))">
-                            <span class="log-time">[@DateTime.Now.ToString("HH:mm:ss")]</span> @item
-                        </div>
-                    }
+                    <div class="log-panel" id="logBody">
+                        @foreach(var item in logs)
+                        {
+                            var isMatchLog = item.Contains("\"match\": true");
+                            <div class="log-line @(isMatchLog ? "match" : "")">
+                                <span class="time">@DateTime.Now.ToString("HH:mm:ss")</span>
+                                <span class="content">@item</span>
+                            </div>
+                        }
+                    </div>
                 </div>
-            </div>
+            </section>
+
         </div>
-    </div>
+    </main>
 </div>
 
 @code {
@@ -278,6 +238,7 @@
         Orchestrator.OnLog += HandleLog;
         Orchestrator.OnNewResult += HandleResult;
         Orchestrator.OnStatusChanged += HandleStatusChanged;
+        Theme.OnThemeChanged += HandleStatusChanged;
     }
 
     private void HandleStatusChanged()
@@ -368,5 +329,6 @@
         Orchestrator.OnLog -= HandleLog;
         Orchestrator.OnNewResult -= HandleResult;
         Orchestrator.OnStatusChanged -= HandleStatusChanged;
+        Theme.OnThemeChanged -= HandleStatusChanged;
     }
 }

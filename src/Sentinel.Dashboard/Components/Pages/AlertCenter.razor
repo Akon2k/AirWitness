@@ -1,0 +1,260 @@
+@page "/alerts"
+@using Sentinel.Dashboard.Services
+@using Sentinel.Dashboard.Models.Data
+@inject IAlertService AlertService
+@inject NavigationManager Nav
+
+<PageTitle>Centro de Alertas | AirWitness Pro</PageTitle>
+
+<div class="alerts-container">
+    <div class="alerts-header">
+        <div class="header-content">
+            <h1>🚨 Centro de Alertas Proactivas</h1>
+            <p>Monitoreo en tiempo real de eventos críticos y detecciones.</p>
+        </div>
+        <div class="header-actions">
+            <button class="btn-refresh" @onclick="LoadAlerts">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+                Actualizar
+            </button>
+        </div>
+    </div>
+
+    @if (notifications == null)
+    {
+        <div class="loading-state">
+            <div class="spinner"></div>
+            <p>Cargando historial de alertas...</p>
+        </div>
+    }
+    else if (!notifications.Any())
+    {
+        <div class="empty-state">
+            <div class="empty-icon">🔔</div>
+            <h3>Sin alertas recientes</h3>
+            <p>El sistema está operando normalmente y no hay eventos reportados.</p>
+        </div>
+    }
+    else
+    {
+        <div class="alerts-list">
+            @foreach (var alert in notifications)
+            {
+                <div class="alert-card @alert.Type.ToString().ToLower() @(alert.IsRead ? "read" : "unread")" @onclick="() => MarkAsRead(alert)">
+                    <div class="alert-icon">
+                        @switch (alert.Type)
+                        {
+                            case NotificationType.Success:
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                                break;
+                            case NotificationType.Error:
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>
+                                break;
+                            case NotificationType.Warning:
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+                                break;
+                            default:
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+                                break;
+                        }
+                    </div>
+                    <div class="alert-content">
+                        <div class="alert-top">
+                            <span class="alert-timestamp">@alert.Timestamp.ToLocalTime().ToString("HH:mm:ss")</span>
+                            <span class="alert-station">@(alert.RadioStation?.Name ?? "Sistema")</span>
+                        </div>
+                        <h4 class="alert-title">@alert.Title</h4>
+                        <p class="alert-message">@alert.Message</p>
+                    </div>
+                    @if (!alert.IsRead)
+                    {
+                        <div class="unread-dot"></div>
+                    }
+                </div>
+            }
+        </div>
+    }
+</div>
+
+<style>
+    .alerts-container {
+        padding: 2rem;
+        max-width: 1000px;
+        margin: 0 auto;
+        animation: fadeIn 0.4s ease-out;
+    }
+
+    .alerts-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 2rem;
+        border-bottom: 1px solid rgba(0,0,0,0.05);
+        padding-bottom: 1.5rem;
+    }
+
+    .alerts-header h1 {
+        font-size: 1.8rem;
+        font-weight: 700;
+        color: var(--sentinel-text);
+        margin: 0;
+    }
+
+    .alerts-header p {
+        color: #666;
+        margin: 0.5rem 0 0 0;
+    }
+
+    .btn-refresh {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.6rem 1.2rem;
+        border-radius: 8px;
+        border: 1px solid #ddd;
+        background: white;
+        cursor: pointer;
+        font-weight: 500;
+        transition: all 0.2s;
+    }
+
+    .btn-refresh:hover {
+        background: #f8f8f8;
+        border-color: #ccc;
+    }
+
+    .alerts-list {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+    }
+
+    .alert-card {
+        display: flex;
+        gap: 1.5rem;
+        padding: 1.2rem;
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+        border-left: 4px solid #ddd;
+        transition: transform 0.2s, box-shadow 0.2s;
+        cursor: pointer;
+        position: relative;
+    }
+
+    .alert-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+    }
+
+    .alert-card.unread {
+        background: #fdfdfd;
+    }
+
+    .alert-card.read {
+        opacity: 0.8;
+    }
+
+    .alert-card.success { border-left-color: #10b981; }
+    .alert-card.error { border-left-color: #ef4444; }
+    .alert-card.warning { border-left-color: #f59e0b; }
+    .alert-card.info { border-left-color: #3b82f6; }
+
+    .alert-icon {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+    }
+
+    .success .alert-icon { background: #ecfdf5; color: #10b981; }
+    .error .alert-icon { background: #fef2f2; color: #ef4444; }
+    .warning .alert-icon { background: #fffbeb; color: #f59e0b; }
+    .info .alert-icon { background: #eff6ff; color: #3b82f6; }
+
+    .alert-icon svg { width: 20px; height: 20px; }
+
+    .alert-content { flex-grow: 1; }
+
+    .alert-top {
+        display: flex;
+        gap: 1rem;
+        margin-bottom: 0.3rem;
+        font-size: 0.8rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .alert-timestamp { color: #999; }
+    .alert-station { color: var(--sentinel-primary); }
+
+    .alert-title {
+        margin: 0 0 0.2rem 0;
+        font-size: 1.05rem;
+        color: #1a1a1a;
+    }
+
+    .alert-message {
+        margin: 0;
+        color: #555;
+        line-height: 1.4;
+    }
+
+    .unread-dot {
+        position: absolute;
+        top: 1.2rem;
+        right: 1.2rem;
+        width: 8px;
+        height: 8px;
+        background: #ef4444;
+        border-radius: 50%;
+    }
+
+    .loading-state, .empty-state {
+        text-align: center;
+        padding: 4rem 0;
+        color: #888;
+    }
+
+    .empty-icon { font-size: 3rem; margin-bottom: 1rem; }
+
+    .spinner {
+        width: 40px;
+        height: 40px;
+        border: 4px solid #f3f3f3;
+        border-top: 4px solid var(--sentinel-primary);
+        border-radius: 50%;
+        margin: 0 auto 1rem;
+        animation: spin 1s linear infinite;
+    }
+
+    @@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    @@keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+</style>
+
+@code {
+    private List<NotificationLog>? notifications;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAlerts();
+    }
+
+    private async Task LoadAlerts()
+    {
+        notifications = await AlertService.GetRecentNotificationsAsync();
+    }
+
+    private async Task MarkAsRead(NotificationLog alert)
+    {
+        if (!alert.IsRead)
+        {
+            await AlertService.MarkAsReadAsync(alert.Id);
+            alert.IsRead = true;
+        }
+    }
+}

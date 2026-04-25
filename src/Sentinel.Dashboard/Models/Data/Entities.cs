@@ -102,4 +102,30 @@ namespace Sentinel.Dashboard.Models.Data
         [NotMapped]
         public string? EvidenceUrl => !string.IsNullOrEmpty(EvidenceFileName) ? $"/evidence/{EvidenceFileName}" : null;
     }
+
+    public enum NotificationType
+    {
+        Success,
+        Warning,
+        Error,
+        Info
+    }
+
+    public class NotificationLog
+    {
+        public int Id { get; set; }
+        public DateTime Timestamp { get; set; } = DateTime.UtcNow;
+        public NotificationType Type { get; set; } = NotificationType.Info;
+        
+        [Required, MaxLength(200)]
+        public string Title { get; set; } = string.Empty;
+        
+        [Required]
+        public string Message { get; set; } = string.Empty;
+        
+        public int? RadioStationId { get; set; }
+        public RadioStation? RadioStation { get; set; }
+        
+        public bool IsRead { get; set; } = false;
+    }
 }

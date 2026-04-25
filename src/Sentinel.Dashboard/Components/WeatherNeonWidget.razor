@@ -31,8 +31,14 @@
             RESTRICCIÓN
         </span>
         <div class="restrict-plates">
-            <span class="plate-badge">0</span>
-            <span class="plate-badge">1</span>
+            @foreach (var digit in GetRestrictedDigits())
+            {
+                <span class="plate-badge">@digit</span>
+            }
+            @if (!GetRestrictedDigits().Any())
+            {
+                <span class="plate-badge" style="font-size: 8px; opacity: 0.7;">LIBRE</span>
+            }
         </div>
     </div>
 
@@ -44,16 +50,16 @@
         display: flex;
         align-items: center;
         justify-content: flex-start;
-        background: rgba(22, 27, 34, 0.95);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        border-radius: 10px;
-        padding: 10px 16px;
+        background: transparent;
+        border: none;
+        border-radius: 0;
+        padding: 0;
         margin: 0;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        box-shadow: none;
         position: relative;
         gap: 16px;
-        min-width: 240px;
-        min-height: 54px;
+        min-width: 200px;
+        transition: all 0.3s ease;
     }
 
     .weather-icon {
@@ -67,12 +73,12 @@
     .weather-icon svg {
         width: 100%;
         height: 100%;
-        stroke: #94a3b8; /* Slate 400 */
+        stroke: var(--text-dim);
         filter: none;
     }
     
     .weather-icon svg path[stroke="#00f3ff"] {
-        stroke: #38bdf8; /* Sky 400 - more sober blue */
+        stroke: var(--text-accent);
         filter: none;
     }
 
@@ -86,7 +92,7 @@
         font-family: 'Space Grotesk', sans-serif;
         font-size: 20px;
         font-weight: 600;
-        color: #f8fafc;
+        color: var(--text-main);
         text-shadow: none;
         line-height: 1;
     }
@@ -94,7 +100,7 @@
     .weather-desc {
         font-size: 9px;
         font-weight: 700;
-        color: #64748b;
+        color: var(--text-dim);
         text-transform: uppercase;
         letter-spacing: 1.2px;
         margin-top: 2px;
@@ -103,24 +109,28 @@
     .widget-divider {
         width: 1px;
         height: 28px;
-        background: rgba(255, 255, 255, 0.08);
+        background: var(--border-color);
+        opacity: 0.5;
     }
 
     .restriction-info {
         display: flex;
         flex-direction: column;
         justify-content: center;
-        padding-right: 25px;
+        padding-right: 10px;
+        border-right: 1px solid var(--border-color);
+        margin-right: 10px;
     }
 
     .restrict-title {
         font-size: 8px;
         font-weight: 800;
-        color: #94a3b8;
+        color: var(--text-dim);
         letter-spacing: 0.8px;
         margin-bottom: 4px;
         display: flex;
         align-items: center;
+        white-space: nowrap;
     }
 
     .restrict-plates {
@@ -132,32 +142,30 @@
         font-family: 'Space Grotesk', monospace;
         font-size: 11px;
         font-weight: 700;
-        background: #334155;
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        color: #f8fafc;
+        background: var(--btn-bg);
+        border: 1px solid var(--border-color);
+        color: var(--text-main);
         border-radius: 3px;
         padding: 1px 5px;
         line-height: 1.2;
     }
 
     .weather-status {
-        position: absolute;
-        top: 6px;
-        right: 12px;
         font-size: 7px;
         font-weight: 900;
-        color: #475569;
+        color: var(--text-dim);
         display: flex;
         align-items: center;
         gap: 4px;
         letter-spacing: 0.5px;
+        margin-left: -5px;
     }
 
     .weather-status .pulse-dot {
         width: 4px;
         height: 4px;
         border-radius: 50%;
-        background-color: #2dd4bf; /* Teal 400 */
+        background-color: var(--stat-online);
         animation: subtle-pulse 2s infinite ease-in-out;
     }
 
@@ -184,6 +192,20 @@
         var change = (decimal)(random.NextDouble() * 0.4 - 0.2); // Fluctúa +/- 0.2
         currentTemp = Math.Round(currentTemp + change, 1);
         InvokeAsync(StateHasChanged);
+    }
+
+    private int[] GetRestrictedDigits()
+    {
+        var today = DateTime.Today.DayOfWeek;
+        return today switch
+        {
+            DayOfWeek.Monday => new[] { 4, 5 },
+            DayOfWeek.Tuesday => new[] { 6, 7 },
+            DayOfWeek.Wednesday => new[] { 8, 9 },
+            DayOfWeek.Thursday => new[] { 0, 1 },
+            DayOfWeek.Friday => new[] { 2, 3 },
+            _ => Array.Empty<int>() // Fines de semana
+        };
     }
 
     public void Dispose()

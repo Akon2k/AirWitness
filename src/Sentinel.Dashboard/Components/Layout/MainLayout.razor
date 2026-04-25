@@ -1,22 +1,33 @@
 @inherits LayoutComponentBase
+@inject Sentinel.Dashboard.Services.ThemeService Theme
 
-<div class="page-with-sidebar">
-    <NavMenu />
+<div class="workstation-shell @(Theme.IsLightMode ? "light-mode" : "")">
+    
+    <header class="top-bar-sentinel">
+        <div class="top-bar-left">
+            <a href="/" class="brand-link">
+                <div class="brand-title-mini">AIRWITNESS <span>PRO</span></div>
+            </a>
+            <div class="v-divider"></div>
+            <nav class="top-nav-links">
+                <NavLink href="" Match="NavLinkMatch.All" class="nav-item">CONTROL</NavLink>
+                <NavLink href="single" class="nav-item">RADAR</NavLink>
+                <NavLink href="multi" class="nav-item">MATRIZ</NavLink>
+                <NavLink href="audit" class="nav-item">AUDITORÍA</NavLink>
+                <NavLink href="maintenance/stations" class="nav-item">CONFIGURACIÓN</NavLink>
+                <NavLink href="alerts" class="nav-item">ALERTAS</NavLink>
+            </nav>
+        </div>
+        
+        <div class="top-bar-right">
+            <WeatherNeonWidget />
+            <ThemeToggle />
+        </div>
+    </header>
 
-    <div class="main-wrapper-sentinel">
-        <header class="top-bar-sentinel">
-            <div class="top-bar-left">
-                <!-- Espacio para migas de pan o buscador futuro -->
-            </div>
-            <div class="top-bar-right">
-                <WeatherNeonWidget />
-            </div>
-        </header>
-
-        <main class="main-content-sentinel">
-            @Body
-        </main>
-    </div>
+    <main class="main-content-sentinel">
+        @Body
+    </main>
 </div>
 
 <div id="blazor-error-ui" data-nosnippet>

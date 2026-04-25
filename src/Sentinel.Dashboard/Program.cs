@@ -13,13 +13,20 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
-builder.Services.AddHttpClient();
-builder.Services.AddDbContext<ApplicationDbContext>(options =>
+builder.Services.AddHttpClient("Insecure")
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
+    {
+        ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true
+    });
+builder.Services.AddHttpClient(); // Cliente por defecto
+builder.Services.AddDbContextFactory<ApplicationDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 builder.Services.AddSingleton<Sentinel.Dashboard.Services.RadioConfigService>();
 builder.Services.AddSingleton<Sentinel.Dashboard.Services.FFmpegAudioService>();
 builder.Services.AddSingleton<Sentinel.Dashboard.Services.NativeAudioMonitor>();
 builder.Services.AddSingleton<Sentinel.Dashboard.Services.WorkerOrchestrator>();
+builder.Services.AddSingleton<Sentinel.Dashboard.Services.IAlertService, Sentinel.Dashboard.Services.AlertService>();
+builder.Services.AddSingleton<Sentinel.Dashboard.Services.StreamDiscoveryService>();
 builder.Services.AddHostedService<Sentinel.Dashboard.Services.MonitoringSchedulerService>();
 builder.Services.AddAuthentication("Cookies")
     .AddCookie("Cookies", options => {
@@ -30,6 +37,7 @@ builder.Services.AddAuthorization();
 builder.Services.AddCascadingAuthenticationState();
 builder.Services.AddScoped<ProtectedSessionStorage>();
 builder.Services.AddScoped<AuthenticationStateProvider, CustomAuthStateProvider>();
+builder.Services.AddScoped<Sentinel.Dashboard.Services.ThemeService>();
 
 var app = builder.Build();
 

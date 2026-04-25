@@ -149,6 +149,42 @@ namespace Sentinel.Dashboard.Data.Migrations
                     b.ToTable("MonitoringSchedules");
                 });
 
+            modelBuilder.Entity("Sentinel.Dashboard.Models.Data.NotificationLog", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<bool>("IsRead")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Message")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int?>("RadioStationId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("Timestamp")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<int>("Type")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RadioStationId");
+
+                    b.ToTable("NotificationLogs");
+                });
+
             modelBuilder.Entity("Sentinel.Dashboard.Models.Data.RadioStation", b =>
                 {
                     b.Property<int>("Id")
@@ -227,6 +263,15 @@ namespace Sentinel.Dashboard.Data.Migrations
                         .HasForeignKey("RadioStationId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.Navigation("RadioStation");
+                });
+
+            modelBuilder.Entity("Sentinel.Dashboard.Models.Data.NotificationLog", b =>
+                {
+                    b.HasOne("Sentinel.Dashboard.Models.Data.RadioStation", "RadioStation")
+                        .WithMany()
+                        .HasForeignKey("RadioStationId");
 
                     b.Navigation("RadioStation");
                 });

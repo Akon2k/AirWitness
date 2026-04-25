@@ -1,0 +1,398 @@
+@page "/tools/detective"
+@using Sentinel.Dashboard.Services
+@inject StreamDiscoveryService DiscoveryService
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+@inject Sentinel.Dashboard.Services.ThemeService Theme
+
+<PageTitle>Stream Detective - AirWitness</PageTitle>
+
+<div class="detective-container @(Theme.IsLightMode ? "light-mode" : "")">
+    <div class="detective-header frosted-glass">
+        <div class="header-content">
+            <button class="btn-back" @onclick='() => Nav.NavigateTo("/multi")'>
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+            </button>
+            <div class="title-group">
+                <h1>STREAM DETECTIVE</h1>
+                <p>Encuentra el flujo de audio directo de cualquier radio</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="scanner-section">
+        <div class="input-card frosted-glass">
+            <div class="search-box">
+                <input type="text" @bind="targetUrl" placeholder="Pega la URL del sitio web o widget aquí..." @onkeyup="HandleKeyUp" />
+                <button class="btn-scan @(isScanning ? "scanning" : "")" @onclick="StartScan" disabled="@isScanning">
+                    @if (isScanning)
+                    {
+                        <div class="spinner"></div>
+                        <span>ESCANEANDO...</span>
+                    }
+                    else
+                    {
+                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                        <span>INICIAR ESCANEO</span>
+                    }
+                </button>
+            </div>
+            <p class="hint">Ejemplo: https://radio.lolafm.cl/ o https://zeno.fm/radio/lola-fm-en-vivo/</p>
+        </div>
+
+        @if (isScanning)
+        {
+            <div class="radar-scan-anim">
+                <div class="radar">
+                    <div class="sweep"></div>
+                    <div class="pulse"></div>
+                </div>
+                <p>Analizando protocolos y metadatos...</p>
+            </div>
+        }
+
+        @if (result != null)
+        {
+            <div class="results-area animate-in">
+                @if (!string.IsNullOrEmpty(result.Error))
+                {
+                    <div class="error-card">
+                        <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+                        <span>Error: @result.Error</span>
+                    </div>
+                }
+                else if (!result.Streams.Any())
+                {
+                    <div class="empty-card">
+                        <p>No se encontraron flujos directos evidentes. La radio podría estar usando un reproductor altamente protegido.</p>
+                    </div>
+                }
+                else
+                {
+                    <div class="results-grid">
+                        @foreach (var stream in result.Streams)
+                        {
+                            <div class="stream-card frosted-glass @(stream.IsWorking ? "working" : "dead")">
+                                <div class="stream-info">
+                                    <div class="stream-badge @stream.Type">@stream.Type.ToUpper()</div>
+                                    <div class="stream-url-display">@stream.Url</div>
+                                    <div class="stream-meta">Detectado vía: <strong>@stream.Source</strong></div>
+                                </div>
+                                <div class="stream-actions">
+                                    @if (stream.IsWorking)
+                                    {
+                                        <div class="status-pill ok">● ONLINE</div>
+                                    }
+                                    else
+                                    {
+                                        <div class="status-pill err">✕ NO RESPONDIO</div>
+                                    }
+                                    <button class="btn-copy" @onclick="() => CopyToClipboard(stream.Url)">COPIAR</button>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+<style>
+    .detective-container {
+        min-height: 100vh;
+        background: var(--bg-main);
+        color: var(--text-main);
+        padding: 2rem;
+        font-family: 'Inter', sans-serif;
+    }
+
+    .detective-header {
+        max-width: 900px;
+        margin: 0 auto 2rem;
+        padding: 1.5rem 2rem;
+        border-radius: 20px;
+        border: 1px solid var(--border-color);
+    }
+
+    .header-content {
+        display: flex;
+        align-items: center;
+        gap: 1.5rem;
+    }
+
+    .btn-back {
+        background: var(--btn-bg);
+        border: 1px solid var(--border-color);
+        color: var(--text-main);
+        width: 40px;
+        height: 40px;
+        border-radius: 10px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.2s;
+    }
+
+    .btn-back:hover {
+        background: var(--btn-hover);
+        transform: translateX(-3px);
+    }
+
+    .title-group h1 {
+        margin: 0;
+        font-size: 1.5rem;
+        letter-spacing: 2px;
+        background: linear-gradient(135deg, #00f2fe 0%, #4facfe 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        font-weight: 800;
+    }
+
+    .title-group p {
+        margin: 0;
+        font-size: 0.85rem;
+        color: var(--text-dim);
+    }
+
+    .scanner-section {
+        max-width: 900px;
+        margin: 0 auto;
+    }
+
+    .input-card {
+        padding: 2rem;
+        border-radius: 24px;
+        border: 1px solid var(--border-color);
+        margin-bottom: 2rem;
+    }
+
+    .search-box {
+        display: flex;
+        gap: 1rem;
+    }
+
+    .search-box input {
+        flex: 1;
+        background: rgba(0,0,0,0.2);
+        border: 1px solid var(--border-color);
+        border-radius: 14px;
+        padding: 1rem 1.5rem;
+        color: white;
+        font-size: 1rem;
+        outline: none;
+        transition: border-color 0.3s;
+    }
+
+    .light-mode .search-box input {
+        background: white;
+        color: #1a1a1a;
+    }
+
+    .search-box input:focus {
+        border-color: #4facfe;
+        box-shadow: 0 0 15px rgba(79, 172, 254, 0.2);
+    }
+
+    .btn-scan {
+        background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+        border: none;
+        border-radius: 14px;
+        padding: 0 2rem;
+        color: white;
+        font-weight: 700;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        transition: all 0.3s;
+    }
+
+    .btn-scan:hover:not(:disabled) {
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(79, 172, 254, 0.4);
+    }
+
+    .btn-scan:disabled {
+        opacity: 0.7;
+        cursor: not-allowed;
+    }
+
+    .hint {
+        margin: 1rem 0 0;
+        font-size: 0.75rem;
+        color: var(--text-dim);
+        font-style: italic;
+    }
+
+    .radar-scan-anim {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        margin: 3rem 0;
+        color: #4facfe;
+    }
+
+    .radar {
+        width: 120px;
+        height: 120px;
+        border: 2px solid rgba(79, 172, 254, 0.2);
+        border-radius: 50%;
+        position: relative;
+        margin-bottom: 1.5rem;
+        overflow: hidden;
+    }
+
+    .sweep {
+        position: absolute;
+        width: 50%;
+        height: 50%;
+        background: linear-gradient(45deg, transparent 50%, rgba(79, 172, 254, 0.4) 100%);
+        top: 0;
+        left: 50%;
+        transform-origin: bottom left;
+        animation: rotate 2s linear infinite;
+    }
+
+    @@keyframes rotate {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+    }
+
+    .results-grid {
+        display: grid;
+        gap: 1rem;
+    }
+
+    .stream-card {
+        padding: 1.25rem;
+        border-radius: 16px;
+        border: 1px solid var(--border-color);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        transition: transform 0.2s;
+    }
+
+    .stream-card:hover {
+        transform: scale(1.01);
+        border-color: #4facfe;
+    }
+
+    .stream-badge {
+        display: inline-block;
+        padding: 4px 10px;
+        border-radius: 6px;
+        font-size: 0.65rem;
+        font-weight: 800;
+        margin-bottom: 0.5rem;
+        background: #333;
+        color: #ccc;
+    }
+
+    .stream-badge.sonic { background: #e91e63; color: white; }
+    .stream-badge.zeno { background: #673ab7; color: white; }
+    .stream-badge.icecast { background: #2196f3; color: white; }
+
+    .stream-url-display {
+        font-family: 'Fira Code', monospace;
+        font-size: 0.9rem;
+        word-break: break-all;
+        margin-bottom: 4px;
+    }
+
+    .stream-meta {
+        font-size: 0.75rem;
+        color: var(--text-dim);
+    }
+
+    .stream-actions {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 0.75rem;
+    }
+
+    .status-pill {
+        font-size: 0.65rem;
+        font-weight: 700;
+        padding: 4px 12px;
+        border-radius: 100px;
+    }
+
+    .status-pill.ok { background: rgba(0, 255, 136, 0.1); color: #00ff88; }
+    .status-pill.err { background: rgba(255, 64, 64, 0.1); color: #ff4040; }
+
+    .btn-copy {
+        background: var(--btn-bg);
+        border: 1px solid var(--border-color);
+        color: var(--text-main);
+        padding: 0.5rem 1rem;
+        border-radius: 8px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        cursor: pointer;
+    }
+
+    .btn-copy:hover {
+        background: var(--btn-hover);
+        border-color: var(--text-accent);
+    }
+
+    .animate-in {
+        animation: fadeInUp 0.4s ease-out;
+    }
+
+    @@keyframes fadeInUp {
+        from { opacity: 0; transform: translateY(20px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    .spinner {
+        width: 18px;
+        height: 18px;
+        border: 3px solid rgba(255,255,255,0.3);
+        border-top-color: white;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+    }
+
+    @@keyframes spin {
+        to { transform: rotate(360deg); }
+    }
+</style>
+
+@code {
+    private string targetUrl = "";
+    private bool isScanning = false;
+    private DiscoveryResult? result;
+
+    private async Task StartScan()
+    {
+        if (string.IsNullOrWhiteSpace(targetUrl)) return;
+        
+        isScanning = true;
+        result = null;
+        StateHasChanged();
+
+        result = await DiscoveryService.DiscoverStreamAsync(targetUrl);
+        
+        isScanning = false;
+        StateHasChanged();
+    }
+
+    private async Task HandleKeyUp(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await StartScan();
+        }
+    }
+
+    private async Task CopyToClipboard(string text)
+    {
+        await JS.InvokeVoidAsync("navigator.clipboard.writeText", text);
+        // Podríamos añadir un toast aquí
+    }
+}

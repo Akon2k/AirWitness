@@ -1,9 +1,9 @@
-.main-wrapper-sentinel {
+.workstation-shell {
     flex: 1;
     display: flex;
     flex-direction: column;
     min-height: 100vh;
-    background: var(--bg-sentinel);
+    background: var(--bg-body);
 }
 
 .top-bar-sentinel {
@@ -12,26 +12,81 @@
     align-items: center;
     justify-content: space-between;
     padding: 0 40px;
-    background: rgba(10, 12, 16, 0.4);
-    backdrop-filter: blur(10px);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    background: var(--bg-card);
+    border-bottom: 1px solid var(--border-color);
     z-index: 100;
+    box-shadow: var(--shadow-soft);
+}
+
+.brand-link { text-decoration: none; }
+
+.brand-title-mini {
+    font-family: 'Outfit', sans-serif;
+    font-weight: 800;
+    font-size: 0.9rem;
+    letter-spacing: -0.3px;
+    color: var(--text-main);
+    display: flex;
+    align-items: center;
+    background: var(--btn-bg);
+    padding: 6px 12px;
+    border-radius: 10px;
+    border: 1px solid var(--border-color);
+}
+
+.brand-title-mini span {
+    color: var(--text-accent);
+    margin-left: 6px;
+    font-size: 0.65rem;
+    font-weight: 900;
+}
+
+.v-divider {
+    width: 1px;
+    height: 20px;
+    background: var(--border-color);
+    opacity: 0.5;
+}
+
+.top-nav-links {
+    display: flex;
+    gap: 10px;
+    margin-left: 10px;
+}
+
+::deep .nav-item {
+    padding: 8px 16px;
+    font-size: 0.7rem;
+    font-weight: 800;
+    color: var(--text-dim) !important;
+    text-decoration: none !important;
+    letter-spacing: 1px;
+    transition: var(--transition-smooth);
+    border-radius: 8px;
+}
+
+::deep .nav-item:hover, ::deep .nav-item.active {
+    color: var(--text-accent) !important;
+    background: var(--btn-bg);
 }
 
 .top-bar-left {
     display: flex;
     align-items: center;
-    gap: 20px;
+    gap: 15px;
 }
 
 .top-bar-right {
     display: flex;
     align-items: center;
-    gap: 15px;
+    gap: 20px;
 }
 
 .main-content-sentinel {
     flex: 1;
-    padding: 30px 40px;
+    padding: 40px;
     overflow-y: auto;
+    max-width: 1400px;
+    width: 100%;
+    margin: 0 auto;
 }

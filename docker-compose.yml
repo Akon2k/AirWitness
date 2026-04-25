@@ -12,7 +12,9 @@ services:
       - ./evidencia_compartida:/app/worker/evidencia
       - ./assets_compartidos:/app/wwwroot/assets
       - ./assets_compartidos:/app/wwwroot/uploads
+      - ./assets_compartidos/radio_config.json:/app/wwwroot/data/radio_config.json
     environment:
+      - TZ=America/Santiago
       - ASPNETCORE_ENVIRONMENT=Production
       - ConnectionStrings__DefaultConnection=Host=db;Database=airwitness_db;Username=airwitness_admin;Password=AirWitnessSQL2026!
       - Security__MasterPassword=AirWitnessPro2026
@@ -25,6 +27,7 @@ services:
     container_name: sentinel_db
     restart: always
     environment:
+      TZ: America/Santiago
       POSTGRES_USER: airwitness_admin
       POSTGRES_PASSWORD: "AirWitnessSQL2026!"
       POSTGRES_DB: airwitness_db
