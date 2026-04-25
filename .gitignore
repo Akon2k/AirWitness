@@ -32,6 +32,7 @@ pip-delete-this-directory.txt
 Thumbs.db
 
 # App Specific
-src/Sentinel.Dashboard/wwwroot/evidencia/*
-!src/Sentinel.Dashboard/wwwroot/evidencia/.gitkeep
+# Incluyendo evidencia por solicitud del usuario
+src/Sentinel.Dashboard/wwwroot/evidencia/
+src/Sentinel.Worker/evidencia/
 data/stations.json
